@@ -19,6 +19,7 @@ import {
 } from "@/lib/finance";
 import { configurado, supabase } from "@/lib/supabase";
 import { Tutorial } from "./Ajuda";
+import Consultor from "./Consultor";
 import { FormLancamento, type NovaTransacao } from "./Forms";
 import { FormCompra, FormParcelamento, FormRendaFixa, type NovaRenda, type NovoParcelamento } from "./FormsPrazo";
 import { Logo, Marca } from "./Marca";
@@ -348,7 +349,6 @@ export default function App() {
     onExcluirConta: (id) => aoFalhar(supabase.from("contas").delete().eq("id", id)),
     rendas,
     parcelamentos,
-    consultarIA,
     onNovo: () => setModal("lancar"),
     onComprar: () => setModal("comprar"),
     onNovaRenda: () => setModal("renda"),
@@ -462,6 +462,11 @@ export default function App() {
         )}
       </main>
 
+      <Consultor
+        visao={visao === "casal" ? "casal" : "pessoal"}
+        rotuloVisao={`${visao === "casal" ? "Casal" : visao === "par" ? "Seu painel pessoal" : "Meu painel"} · ${rotuloMes(mes)}`}
+        consultarIA={consultarIA}
+      />
       {modal === "ajuda" && <Tutorial onFechar={() => setModal(null)} />}
       {modal === "lancar" && (
         <FormLancamento

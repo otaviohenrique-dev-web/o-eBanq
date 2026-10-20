@@ -28,7 +28,7 @@ export type NovaTransacao = Omit<Transacao, "id" | "autor_email">;
 export function Modal({ titulo, onFechar, children }: { titulo: string; onFechar: () => void; children: React.ReactNode }) {
   return (
     <div
-      className="fixed inset-0 z-10 flex items-end justify-center bg-black/50 p-4 sm:items-center"
+      className="fixed inset-0 z-40 flex items-end justify-center bg-black/50 p-4 sm:items-center"
       role="dialog"
       aria-modal="true"
       onClick={onFechar}

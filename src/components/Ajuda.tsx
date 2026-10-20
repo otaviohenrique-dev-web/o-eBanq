@@ -104,9 +104,9 @@ const secoes = [
     texto: "As setas no topo trocam o mês exibido. Dá para olhar meses passados e ver quanto já está comprometido em meses futuros.",
   },
   {
-    titulo: "Assistente inteligente (IA)",
+    titulo: "Consultor inteligente (IA)",
     texto:
-      "O botão Analisar dá sugestões com base nos números do mês, no seu painel ou no do casal. Você também pode fazer perguntas, e pedir o parecer da IA dentro do Posso Comprar. A IA recebe só valores, sem nomes nem e-mails.",
+      "O botão redondo no canto inferior direito, com o escudo e as faíscas, abre o consultor. Ele analisa o mês que você está vendo, no seu painel ou no do casal, e responde perguntas. Também dá para pedir o parecer da IA dentro do Posso Comprar. A IA recebe só valores, sem nomes nem e-mails.",
   },
   {
     titulo: "Cadastrar entradas e gastos",

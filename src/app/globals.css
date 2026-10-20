@@ -170,7 +170,77 @@ button:disabled {
   }
 }
 
+/* Consultor flutuante: halo que pulsa de leve e faíscas que cintilam */
+.consultor-fab {
+  background: transparent;
+  border-radius: 9999px;
+}
+.consultor-fab::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  box-shadow: 0 0 0 0 rgb(16 185 129 / 0.55);
+  animation: pulso 3.2s ease-out infinite;
+  pointer-events: none;
+}
+@keyframes pulso {
+  0% {
+    box-shadow: 0 0 0 0 rgb(16 185 129 / 0.5);
+  }
+  70%,
+  100% {
+    box-shadow: 0 0 0 16px rgb(16 185 129 / 0);
+  }
+}
+.faisca {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: cintilar 2.6s ease-in-out infinite;
+}
+.faisca-2 {
+  animation-delay: -0.9s;
+}
+.faisca-3 {
+  animation-delay: -1.7s;
+}
+@keyframes cintilar {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(0.65);
+    opacity: 0.6;
+  }
+}
+.pontinho {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: currentColor;
+  animation: salto 1s ease-in-out infinite;
+}
+@keyframes salto {
+  0%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.5;
+  }
+  50% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .consultor-fab::before,
+  .faisca,
+  .pontinho {
+    animation: none;
+  }
   .fundo-linha {
     animation: none;
     stroke-dashoffset: 0;

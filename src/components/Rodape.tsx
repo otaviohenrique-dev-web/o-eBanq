@@ -25,7 +25,7 @@ const links = [
 
 export default function Rodape() {
   return (
-    <footer className="mt-10 border-t border-line bg-surface/70 px-4 py-6 text-sm text-subtle backdrop-blur sm:px-6">
+    <footer className="mt-10 border-t border-line bg-surface/70 px-4 pb-24 pt-6 text-sm text-subtle backdrop-blur sm:px-6 sm:pb-6">
       <div className="mx-auto flex max-w-5xl flex-col items-center justify-between gap-3 sm:flex-row">
         <p>
           Desenvolvido por <strong className="text-foreground">Otávio Henrique</strong>

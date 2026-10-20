@@ -22,7 +22,6 @@ import {
   type Transacao,
 } from "@/lib/finance";
 import { Dica, PrimeirosPassos } from "./Ajuda";
-import Assistente from "./Assistente";
 import { BarrasMeses, BarrasParcelas, BarrasPessoas, Rosca } from "./Charts";
 import { ChipConta, ChipTipo, ContasPanel } from "./Contas";
 
@@ -38,7 +37,6 @@ export type Gestao = {
   onExcluirConta: (id: string) => void;
   rendas: RendaFixa[];
   parcelamentos: Parcelamento[];
-  consultarIA: (pedido: Record<string, unknown>) => Promise<string>;
   onNovo: () => void;
   onComprar: () => void;
   onNovaRenda: () => void;
@@ -459,7 +457,6 @@ export function PainelPessoal({
         onExcluir={g.onExcluirConta}
       />
       <RendaFixaCard rendas={rendas} mes={mes} r={r} meuEmail={eu.email} nomeDe={nomeDe} podeCadastrar={!somenteLeitura} g={g} />
-      {!somenteLeitura && <Assistente key="pessoal" visao="pessoal" consultarIA={g.consultarIA} />}
       <Limites r={r} />
       <ParcelasPanel
         parcelamentos={parcs}
@@ -536,8 +533,6 @@ export function PainelCasal({
         ]}
       />
       <Acoes g={g} />
-
-      <Assistente key="casal" visao="casal" consultarIA={g.consultarIA} />
 
       <div className="grid gap-6 lg:grid-cols-2">
         <section className={painel}>
