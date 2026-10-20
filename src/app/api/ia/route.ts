@@ -16,6 +16,34 @@ function dentroDoLimite(email: string): boolean {
   return u.n <= LIMITE_POR_HORA;
 }
 
+type Tentativa = { modelo: string; status: number; motivo: string };
+// 0 = erro de rede ou tempo esgotado
+const SOBRECARGA = [0, 500, 502, 503, 504];
+
+async function chamarGemini(modelo: string, chave: string, corpo: string): Promise<{ texto?: string; status: number; motivo: string }> {
+  try {
+    const resposta = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": chave },
+      body: corpo,
+      signal: AbortSignal.timeout(20_000),
+    });
+    const bruto = await resposta.text();
+    let json: { candidates?: { content?: { parts?: { text?: string }[] } }[]; error?: { message?: string } } = {};
+    try {
+      json = JSON.parse(bruto);
+    } catch {}
+    if (!resposta.ok) {
+      // A mensagem vem do Google e não contém a chave; ajuda a achar chave ou modelo errados.
+      return { status: resposta.status, motivo: String(json.error?.message ?? "").slice(0, 160) };
+    }
+    const texto = (json.candidates?.[0]?.content?.parts ?? []).map((x) => x.text ?? "").join("").trim();
+    return texto ? { texto, status: 200, motivo: "" } : { status: 502, motivo: "resposta vazia" };
+  } catch {
+    return { status: 0, motivo: "tempo esgotado ou falha de rede" };
+  }
+}
+
 const erro = (mensagem: string, status: number) => Response.json({ erro: mensagem }, { status });
 
 function lerPedido(corpo: unknown): { pedido: PedidoIA; visao: VisaoIA; mes: string } | string {
@@ -88,39 +116,41 @@ export async function POST(req: Request) {
     parcelamentos: (p.data ?? []).map((x) => ({ ...norm(x), valor_total: Number(x.valor_total) })) as Parcelamento[],
   });
 
-  const modelo = process.env.GEMINI_MODEL ?? "gemini-3.8-flash";
-  let resposta: Response;
-  try {
-    resposta = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-goog-api-key": chaveGemini },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: INSTRUCAO_SISTEMA }] },
-        contents: [{ role: "user", parts: [{ text: montarPedido(contexto, lido.pedido, lido.visao) }] }],
-        generationConfig: { temperature: 0.4, maxOutputTokens: 4096 },
-      }),
-      signal: AbortSignal.timeout(30_000),
-    });
-  } catch {
-    return erro("A IA demorou demais para responder. Tente novamente.", 504);
+  const corpo = JSON.stringify({
+    systemInstruction: { parts: [{ text: INSTRUCAO_SISTEMA }] },
+    contents: [{ role: "user", parts: [{ text: montarPedido(contexto, lido.pedido, lido.visao) }] }],
+    generationConfig: { temperature: 0.4, maxOutputTokens: 4096 },
+  });
+
+  // Tenta o modelo principal e, se o Google estiver sobrecarregado ou o modelo indisponível, os reservas.
+  const primario = process.env.GEMINI_MODEL ?? "gemini-3.8-flash";
+  const reservas = (process.env.GEMINI_FALLBACK_MODELS ?? "gemini-3.6-flash,gemini-3.5-flash-lite")
+    .split(",")
+    .map((m) => m.trim())
+    .filter(Boolean);
+  const modelos = [...new Set([primario, ...reservas])];
+  const limite = Date.now() + 50_000;
+  let ultima: Tentativa = { modelo: primario, status: 0, motivo: "" };
+
+  for (const modelo of modelos) {
+    for (let tentativa = 0; tentativa < 2 && Date.now() < limite; tentativa++) {
+      const r = await chamarGemini(modelo, chaveGemini, corpo);
+      if (r.texto) return Response.json({ texto: r.texto });
+      ultima = { modelo, status: r.status, motivo: r.motivo };
+      console.error("Gemini", modelo, r.status, r.motivo);
+      if (SOBRECARGA.includes(r.status)) {
+        await new Promise((ok) => setTimeout(ok, 1200));
+        continue; // tenta de novo o mesmo modelo
+      }
+      break; // outro erro: passa para o próximo modelo
+    }
+    if (ultima.status === 401 || ultima.status === 403) break; // chave sem permissão: reservas não ajudam
+    if (Date.now() >= limite) break;
   }
 
-  if (!resposta.ok) {
-    const detalhe = await resposta.text();
-    console.error("Gemini", resposta.status, detalhe.slice(0, 300));
-    if (resposta.status === 429) return erro("O limite gratuito da IA foi atingido. Tente em alguns minutos.", 429);
-    // A mensagem vem do Google e não contém a chave; ajuda a achar chave ou modelo errados.
-    let motivo = "";
-    try {
-      motivo = String(JSON.parse(detalhe)?.error?.message ?? "").slice(0, 160);
-    } catch {}
-    return erro(`A IA não respondeu (HTTP ${resposta.status}${motivo ? `: ${motivo}` : ""}). Modelo: ${modelo}.`, 502);
+  if (ultima.status === 429) return erro("O limite gratuito da IA foi atingido. Tente em alguns minutos.", 429);
+  if (SOBRECARGA.includes(ultima.status)) {
+    return erro("A IA do Google está sobrecarregada neste momento. Tente de novo em alguns instantes.", 503);
   }
-  const json = await resposta.json();
-  const texto: string = (json.candidates?.[0]?.content?.parts ?? [])
-    .map((x: { text?: string }) => x.text ?? "")
-    .join("")
-    .trim();
-  if (!texto) return erro("A IA não gerou resposta para este pedido.", 502);
-  return Response.json({ texto });
+  return erro(`A IA não respondeu (HTTP ${ultima.status}${ultima.motivo ? `: ${ultima.motivo}` : ""}). Modelo: ${ultima.modelo}.`, 502);
 }
