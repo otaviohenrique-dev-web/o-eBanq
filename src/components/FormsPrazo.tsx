@@ -14,6 +14,7 @@ import {
   type Resumo,
 } from "@/lib/finance";
 import { SeletorConta } from "./Contas";
+import { CampoValor } from "./CampoValor";
 import { campo, Modal } from "./Forms";
 
 const botaoPrimario = "w-full rounded-full bg-primary px-6 py-3 font-medium text-on-primary";
@@ -89,7 +90,7 @@ export function FormCompra({
           Confere se a compra cabe no saldo e no limite da categoria. Para a opinião da IA, diga também o que é.
         </p>
         <input className={campo} placeholder="O que é? (ex: Notebook)" value={nome} onChange={(e) => setNome(e.target.value)} />
-        <input className={campo} placeholder="Valor total (ex: 1200,00)" inputMode="decimal" value={valor} onChange={(e) => setValor(e.target.value)} />
+        <CampoValor rotulo="Valor total" valor={valor} onChange={setValor} />
         <input className={campo} type="number" min={1} placeholder="Parcelas" value={parcelas} onChange={(e) => setParcelas(e.target.value)} aria-label="Parcelas" />
         <select className={campo} value={categoria} onChange={(e) => setCategoria(e.target.value as Categoria)} aria-label="Categoria">
           {CATEGORIAS.map((c) => (
@@ -158,7 +159,7 @@ export function FormRendaFixa({
           certa (freelas, vendas), use + Cadastrar &gt; Entrada quando ele chegar.
         </p>
         <input className={campo} placeholder="Nome (ex: Salário)" value={descricao} onChange={(e) => setDescricao(e.target.value)} />
-        <input className={campo} placeholder="Valor mensal (ex: 3000,00)" inputMode="decimal" value={valor} onChange={(e) => setValor(e.target.value)} />
+        <CampoValor rotulo="Valor mensal" valor={valor} onChange={setValor} />
         <label className="block text-sm text-subtle">
           Dia em que cai (1 a 28)
           <input className={`${campo} mt-1`} type="number" min={1} max={28} value={dia} onChange={(e) => setDia(e.target.value)} />
@@ -235,7 +236,7 @@ export function FormParcelamento({
           que vence em cada mês.
         </p>
         <input className={campo} placeholder="O que foi comprado? (ex: Geladeira)" value={descricao} onChange={(e) => setDescricao(e.target.value)} />
-        <input className={campo} placeholder="Valor total (ex: 2400,00)" inputMode="decimal" value={valor} onChange={(e) => setValor(e.target.value)} />
+        <CampoValor rotulo="Valor total" valor={valor} onChange={setValor} />
         <input className={campo} type="number" min={2} max={120} placeholder="Número de parcelas" value={parcelas} onChange={(e) => setParcelas(e.target.value)} aria-label="Número de parcelas" />
         {previa && <p className="text-sm font-medium">{previa}</p>}
         <label className="block text-sm text-subtle">

@@ -12,6 +12,7 @@ import {
   type Transacao,
 } from "@/lib/finance";
 import { SeletorConta } from "./Contas";
+import { CampoValor } from "./CampoValor";
 
 export const campo = "w-full rounded-lg border border-line bg-background px-3 py-2";
 const botaoPrimario = "w-full rounded-full bg-primary px-6 py-3 font-medium text-on-primary";
@@ -108,7 +109,7 @@ export function FormLancamento({
             : "Gasto é dinheiro que saiu. Escolha abaixo se é só seu ou do casal, e a categoria."}
         </p>
         <input className={campo} placeholder="Descrição (ex: Mercado)" value={descricao} onChange={(e) => setDescricao(e.target.value)} />
-        <input className={campo} placeholder="Valor (ex: 150,00)" inputMode="decimal" value={valor} onChange={(e) => setValor(e.target.value)} />
+        <CampoValor rotulo="Valor" valor={valor} onChange={setValor} />
         {tipo === "saida" && (
           <>
             <select className={campo} value={escopo} onChange={(e) => setEscopo(e.target.value as Escopo)} aria-label="Tipo de gasto">

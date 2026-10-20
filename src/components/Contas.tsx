@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { BANCOS_COMUNS, brl, type Conta } from "@/lib/finance";
 import { Dica } from "./Ajuda";
+import { CampoValor } from "./CampoValor";
 
 /** Etiqueta colorida com o nome do banco. */
 export function ChipConta({ conta }: { conta?: Conta }) {
@@ -167,14 +168,7 @@ export function ContasPanel({
               aria-label="Nome do banco"
               maxLength={40}
             />
-            <input
-              className="w-full rounded-lg border border-line bg-background px-3 py-2 text-sm sm:w-40"
-              placeholder="Saldo hoje (opcional)"
-              inputMode="decimal"
-              value={saldo}
-              onChange={(e) => setSaldo(e.target.value)}
-              aria-label="Saldo inicial"
-            />
+            <CampoValor className="w-full sm:w-44" rotulo="Saldo inicial" placeholder="Saldo hoje (opcional)" valor={saldo} onChange={setSaldo} />
             <button type="submit" className="rounded-full border border-strong px-5 py-2 text-sm font-medium text-strong">
               Adicionar
             </button>
