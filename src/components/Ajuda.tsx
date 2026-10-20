@@ -85,6 +85,11 @@ const secoes = [
       "Da sua renda do mês, até 50% vai para necessidades (contas, mercado, transporte), 30% para lazer e 20% para economias. As barras ficam verdes, âmbar acima de 80% do limite e vermelhas acima de 100%.",
   },
   {
+    titulo: "Bancos e etiquetas",
+    texto:
+      "Em \"Meus bancos\", adicione cada banco com um toque (ou digite outro) e, se quiser, o saldo de hoje. Ao cadastrar entradas, gastos, salário ou compras a prazo, escolha o banco: ele vira uma etiqueta colorida no lançamento e o app mostra o saldo de cada banco. Cada lançamento também tem a etiqueta 👤 Pessoal ou 👥 Casal, e dá para filtrar por elas.",
+  },
+  {
     titulo: "Salário e renda variável",
     texto:
       "Cadastre seu salário uma vez em \"Salário e renda\": ele conta sozinho em todo mês. Para dinheiro que entra sem data certa, lance cada entrada em + Cadastrar quando chegar. Os limites usam a renda fixa mais o maior valor entre o recebido no mês e a média dos 3 meses anteriores.",

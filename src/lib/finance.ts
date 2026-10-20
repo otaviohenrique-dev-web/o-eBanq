@@ -13,6 +13,7 @@ export type Transacao = {
   /** Preenchido nos lançamentos gerados automaticamente (renda fixa ou parcela). */
   origem?: "fixa" | "parcela";
   refId?: string;
+  conta_id?: string | null;
 };
 
 export type RendaFixa = {
@@ -23,6 +24,7 @@ export type RendaFixa = {
   dia: number;
   inicio: string; // YYYY-MM
   fim: string | null; // YYYY-MM, inclusive
+  conta_id?: string | null;
 };
 
 export type Parcelamento = {
@@ -34,7 +36,33 @@ export type Parcelamento = {
   parcelas: number;
   primeira: string; // YYYY-MM
   categoria: Categoria;
+  conta_id?: string | null;
 };
+
+/** Banco ou conta de uma pessoa: serve de "tag" para rastrear onde o dinheiro está. */
+export type Conta = {
+  id: string;
+  autor_email: string;
+  nome: string;
+  cor: string;
+  saldo_inicial: number;
+};
+
+export const CORES_CONTA = ["#2a78d6", "#eb6834", "#1baf7a", "#e87ba4", "#6250d6", "#eda100", "#e34948", "#008300"];
+
+export const BANCOS_COMUNS = [
+  "Nubank",
+  "Itaú",
+  "Bradesco",
+  "Banco do Brasil",
+  "Caixa",
+  "Santander",
+  "Inter",
+  "C6 Bank",
+  "Mercado Pago",
+  "PicPay",
+  "Dinheiro (carteira)",
+];
 
 export type Pessoa = { email: string; nome: string };
 
@@ -123,6 +151,7 @@ export function expandir(
         data: `${m}-${p2(r.dia)}`,
         origem: "fixa",
         refId: r.id,
+        conta_id: r.conta_id ?? null,
       });
     }
   }
@@ -142,10 +171,21 @@ export function expandir(
         data: `${m}-01`,
         origem: "parcela",
         refId: p.id,
+        conta_id: p.conta_id ?? null,
       });
     }
   }
   return [...ts, ...geradas];
+}
+
+/** Saldo de cada conta: saldo inicial + entradas - saídas com data até `ate` (YYYY-MM-DD). */
+export function saldoPorConta(todas: Transacao[], contas: Conta[], ate: string): Map<string, number> {
+  const mapa = new Map(contas.map((c) => [c.id, c.saldo_inicial]));
+  for (const t of todas) {
+    if (!t.conta_id || t.data > ate || !mapa.has(t.conta_id)) continue;
+    mapa.set(t.conta_id, (mapa.get(t.conta_id) ?? 0) + (t.tipo === "entrada" ? t.valor : -t.valor));
+  }
+  return mapa;
 }
 
 export const noMes = (ts: Transacao[], mes: string) => ts.filter((t) => t.data.startsWith(mes));

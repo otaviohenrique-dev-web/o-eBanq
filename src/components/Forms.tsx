@@ -7,9 +7,11 @@ import {
   parseValor,
   ROTULO,
   type Categoria,
+  type Conta,
   type Escopo,
   type Transacao,
 } from "@/lib/finance";
+import { SeletorConta } from "./Contas";
 
 export const campo = "w-full rounded-lg border border-line bg-background px-3 py-2";
 const botaoPrimario = "w-full rounded-full bg-primary px-6 py-3 font-medium text-on-primary";
@@ -45,10 +47,12 @@ export function Modal({ titulo, onFechar, children }: { titulo: string; onFechar
 
 export function FormLancamento({
   escopoInicial,
+  contas,
   onSalvar,
   onFechar,
 }: {
   escopoInicial: Escopo;
+  contas: Conta[];
   onSalvar: (t: NovaTransacao) => Promise<string | null>;
   onFechar: () => void;
 }) {
@@ -58,6 +62,7 @@ export function FormLancamento({
   const [valor, setValor] = useState("");
   const [categoria, setCategoria] = useState<Categoria>("necessidade");
   const [data, setData] = useState(hoje);
+  const [contaId, setContaId] = useState<string | null>(contas.length === 1 ? contas[0].id : null);
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
 
@@ -75,6 +80,7 @@ export function FormLancamento({
       valor: v,
       categoria,
       data,
+      conta_id: contaId,
     });
     setSalvando(false);
     if (falha) setErro(falha);
@@ -117,11 +123,14 @@ export function FormLancamento({
               ))}
             </select>
             <p className="text-xs text-subtle">
-              {escopo === "casal" ? "Gasto do casal: aparece só na visão Casal e é dividido pela renda de cada um. " : ""}
+              {escopo === "casal"
+                ? "👥 Gasto do casal: aparece só na visão Casal e é dividido pela renda de cada um. "
+                : "👤 Gasto pessoal: aparece no seu painel (Meu painel) e também soma no Casal. "}
               {DICA_CATEGORIA[categoria]}
             </p>
           </>
         )}
+        <SeletorConta contas={contas} valor={contaId} onChange={setContaId} />
         <input className={campo} type="date" value={data} onChange={(e) => setData(e.target.value)} aria-label="Data" />
         {erro && <p className="text-sm text-danger">{erro}</p>}
         <button type="submit" disabled={salvando} className={botaoPrimario}>

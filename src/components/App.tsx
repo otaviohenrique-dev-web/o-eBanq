@@ -4,10 +4,13 @@ import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import type { Session } from "@supabase/supabase-js";
 import {
   addMeses,
+  CORES_CONTA,
   expandir,
   hoje,
   resumirMes,
   rotuloMes,
+  saldoPorConta,
+  type Conta,
   type Parcelamento,
   type Pessoa,
   type RendaFixa,
@@ -86,21 +89,28 @@ function Tela({ children }: { children: React.ReactNode }) {
   );
 }
 
-type Carga = { pessoas: Pessoa[]; transacoes: Transacao[]; rendas: RendaFixa[]; parcelamentos: Parcelamento[] };
+type Carga = {
+  pessoas: Pessoa[];
+  transacoes: Transacao[];
+  rendas: RendaFixa[];
+  parcelamentos: Parcelamento[];
+  contas: Conta[];
+};
 
 async function buscar(): Promise<{ erro: string } | Carga> {
-  const [a, t, r, p] = await Promise.all([
+  const [a, t, r, p, c] = await Promise.all([
     supabase.from("autorizados").select("email,nome"),
     supabase.from("transacoes").select("*").order("data", { ascending: false }),
     supabase.from("rendas_fixas").select("*").order("inicio", { ascending: false }),
     supabase.from("parcelamentos").select("*").order("primeira", { ascending: false }),
+    supabase.from("contas").select("*").order("criado_em", { ascending: true }),
   ]);
-  const falha = a.error ?? t.error ?? r.error ?? p.error;
+  const falha = a.error ?? t.error ?? r.error ?? p.error ?? c.error;
   if (falha) {
-    const faltaTabela = /rendas_fixas|parcelamentos/.test(falha.message);
+    const faltaTabela = /rendas_fixas|parcelamentos|contas|conta_id/.test(falha.message);
     return {
       erro: faltaTabela
-        ? "Faltam as tabelas de renda fixa e parcelas no banco. Rode supabase/02-renda-fixa-e-parcelas.sql no Supabase."
+        ? "Faltam tabelas no banco. No Supabase (SQL Editor), rode supabase/02-renda-fixa-e-parcelas.sql e depois supabase/03-bancos.sql."
         : falha.message,
     };
   }
@@ -110,6 +120,7 @@ async function buscar(): Promise<{ erro: string } | Carga> {
     transacoes: (t.data ?? []).map((x) => ({ ...minusculo(x), valor: Number(x.valor) })),
     rendas: (r.data ?? []).map((x) => ({ ...minusculo(x), valor: Number(x.valor) })),
     parcelamentos: (p.data ?? []).map((x) => ({ ...minusculo(x), valor_total: Number(x.valor_total) })),
+    contas: (c.data ?? []).map((x) => ({ ...minusculo(x), saldo_inicial: Number(x.saldo_inicial) })),
   };
 }
 
@@ -126,6 +137,7 @@ export default function App() {
   const [transacoes, setTransacoes] = useState<Transacao[]>([]);
   const [rendas, setRendas] = useState<RendaFixa[]>([]);
   const [parcelamentos, setParcelamentos] = useState<Parcelamento[]>([]);
+  const [contas, setContas] = useState<Conta[]>([]);
   const [carregado, setCarregado] = useState(false);
   const [erro, setErro] = useState("");
   const [visao, setVisao] = useState<Visao>("meu");
@@ -151,6 +163,7 @@ export default function App() {
     setTransacoes(r.transacoes);
     setRendas(r.rendas);
     setParcelamentos(r.parcelamentos);
+    setContas(r.contas);
     setCarregado(true);
     // Primeiro acesso neste navegador: abre o guia "Como usar" uma única vez.
     try {
@@ -174,6 +187,7 @@ export default function App() {
     setTransacoes([]);
     setRendas([]);
     setParcelamentos([]);
+    setContas([]);
     await supabase.auth.signOut();
   }
 
@@ -192,6 +206,16 @@ export default function App() {
     const falha = await gravar(pedido);
     if (falha) setErro(falha);
   }
+
+  const adicionarConta = (nome: string, saldoInicial: number) =>
+    gravar(
+      supabase.from("contas").insert({
+        nome,
+        cor: CORES_CONTA[contas.length % CORES_CONTA.length],
+        saldo_inicial: saldoInicial,
+        autor_email: email,
+      }),
+    );
 
   function encerrarRenda(id: string) {
     const renda = rendas.find((x) => x.id === id);
@@ -314,7 +338,14 @@ export default function App() {
     return json.texto as string;
   }
 
+  const saldos = saldoPorConta(todas, contas, hoje());
+  const minhasContas = contas.filter((c) => c.autor_email === email);
+
   const g: Gestao = {
+    contas,
+    saldos,
+    onAdicionarConta: adicionarConta,
+    onExcluirConta: (id) => aoFalhar(supabase.from("contas").delete().eq("id", id)),
     rendas,
     parcelamentos,
     consultarIA,
@@ -433,7 +464,12 @@ export default function App() {
 
       {modal === "ajuda" && <Tutorial onFechar={() => setModal(null)} />}
       {modal === "lancar" && (
-        <FormLancamento escopoInicial={visao === "casal" ? "casal" : "pessoal"} onSalvar={salvar} onFechar={() => setModal(null)} />
+        <FormLancamento
+          escopoInicial={visao === "casal" ? "casal" : "pessoal"}
+          contas={minhasContas}
+          onSalvar={salvar}
+          onFechar={() => setModal(null)}
+        />
       )}
       {modal === "comprar" && (
         <FormCompra
@@ -443,11 +479,12 @@ export default function App() {
           onFechar={() => setModal(null)}
         />
       )}
-      {modal === "renda" && <FormRendaFixa mesAtual={mesAtual} onSalvar={salvarRenda} onFechar={() => setModal(null)} />}
+      {modal === "renda" && <FormRendaFixa mesAtual={mesAtual} contas={minhasContas} onSalvar={salvarRenda} onFechar={() => setModal(null)} />}
       {modal === "parcelamento" && (
         <FormParcelamento
           mesInicial={mes}
           escopoInicial={visao === "casal" ? "casal" : "pessoal"}
+          contas={minhasContas}
           onSalvar={salvarParcelamento}
           onFechar={() => setModal(null)}
         />

@@ -144,14 +144,20 @@ export function BarrasParcelas({ dados }: { dados: { mes: string; total: number 
 }
 
 /** Quanto cada pessoa recebeu e gastou no mês. */
-export function BarrasPessoas({ dados }: { dados: { nome: string; entradas: number; saidas: number }[] }) {
+export function BarrasPessoas({
+  dados,
+  rotulos = ["Entradas", "Saídas"],
+}: {
+  dados: { nome: string; entradas: number; saidas: number }[];
+  rotulos?: [string, string];
+}) {
   const max = Math.max(...dados.flatMap((d) => [d.entradas, d.saidas]), 1);
   return (
     <div className="space-y-4">
       <Legenda
         itens={[
-          { cor: "var(--serie-1)", nome: "Entradas" },
-          { cor: "var(--serie-2)", nome: "Saídas" },
+          { cor: "var(--serie-1)", nome: rotulos[0] },
+          { cor: "var(--serie-2)", nome: rotulos[1] },
         ]}
       />
       {dados.map((d) => (
@@ -159,8 +165,8 @@ export function BarrasPessoas({ dados }: { dados: { nome: string; entradas: numb
           <p className="text-sm font-medium">{d.nome}</p>
           {(
             [
-              ["Entradas", d.entradas, "var(--serie-1)"],
-              ["Saídas", d.saidas, "var(--serie-2)"],
+              [rotulos[0], d.entradas, "var(--serie-1)"],
+              [rotulos[1], d.saidas, "var(--serie-2)"],
             ] as const
           ).map(([nome, valor, cor]) => (
             <div key={nome} className="flex items-center gap-3 text-xs" title={`${d.nome} · ${nome}: ${brl(valor)}`}>

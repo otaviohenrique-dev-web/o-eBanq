@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   addMeses,
   brl,
@@ -13,6 +14,7 @@ import {
   rotuloMes,
   ROTULO,
   ultimosMeses,
+  type Conta,
   type Parcelamento,
   type Pessoa,
   type RendaFixa,
@@ -22,6 +24,7 @@ import {
 import { Dica, PrimeirosPassos } from "./Ajuda";
 import Assistente from "./Assistente";
 import { BarrasMeses, BarrasParcelas, BarrasPessoas, Rosca } from "./Charts";
+import { ChipConta, ChipTipo, ContasPanel } from "./Contas";
 
 const painel = "rounded-2xl bg-surface p-5 shadow-sm";
 const botaoPrimario = "rounded-full bg-primary px-6 py-3 font-medium text-on-primary";
@@ -29,6 +32,10 @@ const botaoSecundario = "rounded-full border border-strong px-6 py-3 font-medium
 const botaoPequeno = "rounded-full border border-line px-3 py-1 text-xs text-subtle";
 
 export type Gestao = {
+  contas: Conta[];
+  saldos: Map<string, number>;
+  onAdicionarConta: (nome: string, saldoInicial: number) => Promise<string | null>;
+  onExcluirConta: (id: string) => void;
   rendas: RendaFixa[];
   parcelamentos: Parcelamento[];
   consultarIA: (pedido: Record<string, unknown>) => Promise<string>;
@@ -167,6 +174,7 @@ function RendaFixaCard({
                 {x.fim ? ` · encerrada em ${rotuloMes(x.fim)}` : ""}
                 {ativa(x) ? " · ativa neste mês" : ""}
               </p>
+              <ChipConta conta={g.contas.find((c) => c.id === x.conta_id)} />
             </div>
             {x.autor_email === meuEmail && (
               <div className="flex shrink-0 items-center gap-2">
@@ -261,6 +269,7 @@ function ParcelasPanel({
                     {p.parcelas}x de {brl(valorParcela)} · total {brl(p.valor_total)} · {nomeDe(p.autor_email)}
                     {p.escopo === "casal" ? " · casal" : ""} · {situacao}
                   </p>
+                  <ChipConta conta={g.contas.find((c) => c.id === p.conta_id)} />
                   {restantes > 0 && <p className="text-xs text-subtle">Falta pagar {brl(valorParcela * restantes)} ({restantes} parcelas, contando este mês)</p>}
                 </div>
                 {!somenteLeitura && p.autor_email === meuEmail && (
@@ -283,35 +292,82 @@ function ParcelasPanel({
 function Movimentos({
   titulo,
   lista,
+  contas,
   nomeDe,
   meuEmail,
   onExcluir,
+  filtrarEscopo,
 }: {
   titulo: string;
   lista: Transacao[];
+  contas: Conta[];
   nomeDe: (email: string) => string;
   meuEmail: string;
   onExcluir?: (id: string) => void;
+  filtrarEscopo: boolean;
 }) {
-  const ordenada = [...lista].sort((x, y) => y.data.localeCompare(x.data));
+  const [escopo, setEscopo] = useState<"todos" | "pessoal" | "casal">("todos");
+  const [conta, setConta] = useState<string>("todas");
+  const visiveis = lista
+    .filter((t) => escopo === "todos" || t.escopo === escopo)
+    .filter((t) => conta === "todas" || (conta === "sem" ? !t.conta_id : t.conta_id === conta))
+    .sort((x, y) => y.data.localeCompare(x.data));
+  const chip = (ativo: boolean) =>
+    `rounded-full border px-3 py-1 text-xs ${ativo ? "border-strong bg-strong text-background" : "border-line text-subtle"}`;
+  const contasUsadas = contas.filter((c) => lista.some((t) => t.conta_id === c.id));
   return (
     <section className={painel}>
       <h2 className="font-semibold">{titulo}</h2>
-      {ordenada.length === 0 && (
+      {(filtrarEscopo || contasUsadas.length > 0) && lista.length > 0 && (
+        <div className="mt-3 space-y-2">
+          {filtrarEscopo && (
+            <div className="flex flex-wrap gap-2" aria-label="Filtrar por tipo">
+              <button type="button" className={chip(escopo === "todos")} onClick={() => setEscopo("todos")}>
+                Todos
+              </button>
+              <button type="button" className={chip(escopo === "pessoal")} onClick={() => setEscopo("pessoal")}>
+                👤 Pessoais
+              </button>
+              <button type="button" className={chip(escopo === "casal")} onClick={() => setEscopo("casal")}>
+                👥 Do casal
+              </button>
+            </div>
+          )}
+          {contasUsadas.length > 0 && (
+            <div className="flex flex-wrap gap-2" aria-label="Filtrar por banco">
+              <button type="button" className={chip(conta === "todas")} onClick={() => setConta("todas")}>
+                Todos os bancos
+              </button>
+              {contasUsadas.map((c) => (
+                <button key={c.id} type="button" className={chip(conta === c.id)} onClick={() => setConta(c.id)}>
+                  {c.nome}
+                </button>
+              ))}
+              <button type="button" className={chip(conta === "sem")} onClick={() => setConta("sem")}>
+                Sem banco
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+      {lista.length === 0 && (
         <p className="mt-2 text-sm text-subtle">Nada neste mês ainda. Toque em &ldquo;+ Cadastrar&rdquo; para lançar uma entrada ou um gasto.</p>
       )}
+      {lista.length > 0 && visiveis.length === 0 && <p className="mt-3 text-sm text-subtle">Nenhum lançamento com esses filtros.</p>}
       <ul className="mt-2 divide-y divide-line">
-        {ordenada.map((t) => (
+        {visiveis.map((t) => (
           <li key={t.id} className="flex items-center justify-between gap-3 py-3">
             <div className="min-w-0 break-words">
               <p className="font-medium">{t.descricao}</p>
               <p className="text-xs text-subtle">
                 {t.data.split("-").reverse().join("/")} · {nomeDe(t.autor_email)}
                 {t.tipo === "saida" && ` · ${ROTULO[t.categoria]}`}
-                {t.escopo === "casal" && " · casal"}
-                {t.origem === "fixa" && " · renda fixa"}
-                {t.origem === "parcela" && " · compra a prazo"}
               </p>
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                <ChipTipo tipo={t.escopo} />
+                {t.origem && <ChipTipo tipo={t.origem} />}
+                <ChipConta conta={contas.find((c) => c.id === t.conta_id)} />
+              </div>
             </div>
             <div className="flex shrink-0 items-center gap-3">
               <span className={t.tipo === "entrada" ? "text-primary" : "text-danger"}>
@@ -355,6 +411,10 @@ export function PainelPessoal({
   const rendas = g.rendas.filter((x) => x.autor_email === pessoa.email);
   const parcs = g.parcelamentos.filter((p) => p.autor_email === pessoa.email && p.escopo === "pessoal");
   const reais = transacoes.filter((t) => t.autor_email === pessoa.email && !t.origem);
+  const casalPago = noMes(transacoes, mes)
+    .filter((t) => t.autor_email === pessoa.email && t.escopo === "casal" && t.tipo === "saida")
+    .reduce((acc, t) => acc + t.valor, 0);
+  const contasDaPessoa = g.contas.filter((c) => c.autor_email === pessoa.email);
 
   return (
     <div className="space-y-6 sm:space-y-8">
@@ -375,13 +435,29 @@ export function PainelPessoal({
         itens={[
           { titulo: "Disponível para gastar", valor: r.saldo, cor: r.saldo < 0 ? "text-danger" : "text-primary", dica: "Entradas menos saídas do mês" },
           { titulo: "Entradas do mês", valor: r.entradas, dica: `Fixa ${brl(r.fixa)} + variável ${brl(r.variavel)}` },
-          { titulo: "Gastos do mês", valor: r.gasto.necessidade + r.gasto.lazer, dica: "Necessidades + lazer, com parcelas" },
+          { titulo: "Gastos pessoais", valor: r.gasto.necessidade + r.gasto.lazer, dica: "Necessidades + lazer, sem os do casal" },
           { titulo: "Reservado / Guardado", valor: r.gasto.economia, dica: "O que foi para economias" },
           { titulo: "Parcelas do mês", valor: r.parcelas, dica: "Compras a prazo que vencem" },
           { titulo: "Renda base dos limites", valor: r.base, dica: "Fixa + variável esperada" },
         ]}
       />
+      {casalPago > 0 && (
+        <p className="rounded-lg bg-muted px-4 py-3 text-sm text-subtle">
+          👥 {somenteLeitura ? `${pessoa.nome} pagou` : "Você pagou"} <strong className="text-foreground">{brl(casalPago)}</strong> em gastos do casal neste mês. Eles aparecem na aba Casal, não aqui.
+        </p>
+      )}
       {!somenteLeitura && <Acoes g={g} />}
+      <ContasPanel
+        titulo={somenteLeitura ? `Bancos de ${pessoa.nome}` : "Meus bancos"}
+        contas={contasDaPessoa}
+        saldos={g.saldos}
+        meuEmail={eu.email}
+        nomeDe={nomeDe}
+        podeEditar={!somenteLeitura}
+        mostrarDono={false}
+        onAdicionar={g.onAdicionarConta}
+        onExcluir={g.onExcluirConta}
+      />
       <RendaFixaCard rendas={rendas} mes={mes} r={r} meuEmail={eu.email} nomeDe={nomeDe} podeCadastrar={!somenteLeitura} g={g} />
       {!somenteLeitura && <Assistente key="pessoal" visao="pessoal" consultarIA={g.consultarIA} />}
       <Limites r={r} />
@@ -395,7 +471,15 @@ export function PainelPessoal({
         somenteLeitura={somenteLeitura}
         g={g}
       />
-      <Movimentos titulo="Movimentações do mês" lista={doMes} nomeDe={nomeDe} meuEmail={eu.email} onExcluir={somenteLeitura ? undefined : g.onExcluir} />
+      <Movimentos
+        titulo={somenteLeitura ? `Lançamentos pessoais de ${pessoa.nome} no mês` : "Seus lançamentos pessoais do mês"}
+        lista={doMes}
+        contas={g.contas}
+        nomeDe={nomeDe}
+        meuEmail={eu.email}
+        onExcluir={somenteLeitura ? undefined : g.onExcluir}
+        filtrarEscopo={false}
+      />
     </div>
   );
 }
@@ -426,6 +510,11 @@ export function PainelCasal({
   const porPessoa = pessoas.map((p) => {
     const rp = resumir(doMes.filter((t) => t.autor_email === p.email));
     return { nome: p.nome, entradas: rp.entradas, saidas: rp.saidas };
+  });
+  const pessoalVsCasal = pessoas.map((p) => {
+    const saidas = doMes.filter((t) => t.autor_email === p.email && t.tipo === "saida");
+    const somaEscopo = (esc: string) => saidas.filter((t) => t.escopo === esc).reduce((acc, t) => acc + t.valor, 0);
+    return { nome: p.nome, entradas: somaEscopo("pessoal"), saidas: somaEscopo("casal") };
   });
   const divisao = par ? dividirGastos(doMes, [eu, par]) : null;
   const taxaEconomia = r.entradas > 0 ? Math.round((r.gasto.economia / r.entradas) * 100) : 0;
@@ -464,6 +553,10 @@ export function PainelCasal({
           <BarrasPessoas dados={porPessoa} />
         </section>
         <section className={painel}>
+          <h2 className="mb-4 font-semibold">Gastos pessoais x gastos do casal</h2>
+          <BarrasPessoas dados={pessoalVsCasal} rotulos={["👤 Pessoais", "👥 Do casal"]} />
+        </section>
+        <section className={painel}>
           <h2 className="font-semibold">Divisão dos gastos do casal</h2>
           {!divisao ? (
             <p className="mt-2 text-sm text-subtle">Autorize o e-mail do seu par para dividir os gastos.</p>
@@ -494,6 +587,17 @@ export function PainelCasal({
         </section>
       </div>
 
+      <ContasPanel
+        titulo="Onde está o dinheiro do casal"
+        contas={g.contas}
+        saldos={g.saldos}
+        meuEmail={eu.email}
+        nomeDe={nomeDe}
+        podeEditar
+        mostrarDono
+        onAdicionar={g.onAdicionarConta}
+        onExcluir={g.onExcluirConta}
+      />
       <RendaFixaCard rendas={g.rendas} mes={mes} r={r} meuEmail={eu.email} nomeDe={nomeDe} podeCadastrar g={g} />
       <Limites r={r} />
       <ParcelasPanel
@@ -506,7 +610,15 @@ export function PainelCasal({
         somenteLeitura={false}
         g={g}
       />
-      <Movimentos titulo="Movimentações do casal no mês" lista={doMes} nomeDe={nomeDe} meuEmail={eu.email} onExcluir={g.onExcluir} />
+      <Movimentos
+        titulo="Movimentações do casal no mês"
+        lista={doMes}
+        contas={g.contas}
+        nomeDe={nomeDe}
+        meuEmail={eu.email}
+        onExcluir={g.onExcluir}
+        filtrarEscopo
+      />
     </div>
   );
 }

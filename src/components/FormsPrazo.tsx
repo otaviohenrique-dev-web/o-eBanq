@@ -8,10 +8,12 @@ import {
   podeComprar,
   ROTULO,
   type Categoria,
+  type Conta,
   type Escopo,
   type Parecer,
   type Resumo,
 } from "@/lib/finance";
+import { SeletorConta } from "./Contas";
 import { campo, Modal } from "./Forms";
 
 const botaoPrimario = "w-full rounded-full bg-primary px-6 py-3 font-medium text-on-primary";
@@ -112,14 +114,16 @@ export function FormCompra({
   );
 }
 
-export type NovaRenda = { descricao: string; valor: number; dia: number; inicio: string };
+export type NovaRenda = { descricao: string; valor: number; dia: number; inicio: string; conta_id: string | null };
 
 export function FormRendaFixa({
   mesAtual,
+  contas,
   onSalvar,
   onFechar,
 }: {
   mesAtual: string;
+  contas: Conta[];
   onSalvar: (r: NovaRenda) => Promise<string | null>;
   onFechar: () => void;
 }) {
@@ -127,6 +131,7 @@ export function FormRendaFixa({
   const [valor, setValor] = useState("");
   const [dia, setDia] = useState("5");
   const [inicio, setInicio] = useState(mesAtual);
+  const [contaId, setContaId] = useState<string | null>(contas.length === 1 ? contas[0].id : null);
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
 
@@ -139,7 +144,7 @@ export function FormRendaFixa({
     if (!(d >= 1 && d <= 28)) return setErro("O dia deve ficar entre 1 e 28.");
     if (!/^\d{4}-\d{2}$/.test(inicio)) return setErro("Escolha o mês de início.");
     setSalvando(true);
-    const falha = await onSalvar({ descricao: descricao.trim(), valor: v, dia: d, inicio });
+    const falha = await onSalvar({ descricao: descricao.trim(), valor: v, dia: d, inicio, conta_id: contaId });
     setSalvando(false);
     if (falha) setErro(falha);
     else onFechar();
@@ -162,6 +167,7 @@ export function FormRendaFixa({
           Vale a partir de
           <input className={`${campo} mt-1`} type="month" value={inicio} onChange={(e) => setInicio(e.target.value)} />
         </label>
+        <SeletorConta contas={contas} valor={contaId} onChange={setContaId} />
         {erro && <p className="text-sm text-danger">{erro}</p>}
         <button type="submit" disabled={salvando} className={botaoPrimario}>
           {salvando ? "Salvando..." : "Salvar salário"}
@@ -178,16 +184,19 @@ export type NovoParcelamento = {
   primeira: string;
   categoria: Categoria;
   escopo: Escopo;
+  conta_id: string | null;
 };
 
 export function FormParcelamento({
   mesInicial,
   escopoInicial,
+  contas,
   onSalvar,
   onFechar,
 }: {
   mesInicial: string;
   escopoInicial: Escopo;
+  contas: Conta[];
   onSalvar: (p: NovoParcelamento) => Promise<string | null>;
   onFechar: () => void;
 }) {
@@ -197,6 +206,7 @@ export function FormParcelamento({
   const [primeira, setPrimeira] = useState(mesInicial);
   const [categoria, setCategoria] = useState<Categoria>("necessidade");
   const [escopo, setEscopo] = useState<Escopo>(escopoInicial);
+  const [contaId, setContaId] = useState<string | null>(contas.length === 1 ? contas[0].id : null);
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
 
@@ -211,7 +221,7 @@ export function FormParcelamento({
     if (!(n >= 2 && n <= 120)) return setErro("Informe de 2 a 120 parcelas.");
     if (!/^\d{4}-\d{2}$/.test(primeira)) return setErro("Escolha o mês da primeira parcela.");
     setSalvando(true);
-    const falha = await onSalvar({ descricao: descricao.trim(), valor_total: v, parcelas: n, primeira, categoria, escopo });
+    const falha = await onSalvar({ descricao: descricao.trim(), valor_total: v, parcelas: n, primeira, categoria, escopo, conta_id: contaId });
     setSalvando(false);
     if (falha) setErro(falha);
     else onFechar();
@@ -243,6 +253,7 @@ export function FormParcelamento({
             </option>
           ))}
         </select>
+        <SeletorConta contas={contas} valor={contaId} onChange={setContaId} />
         {erro && <p className="text-sm text-danger">{erro}</p>}
         <button type="submit" disabled={salvando} className={botaoPrimario}>
           {salvando ? "Salvando..." : "Salvar compra"}
