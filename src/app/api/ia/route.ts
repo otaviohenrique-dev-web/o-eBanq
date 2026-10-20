@@ -88,7 +88,7 @@ export async function POST(req: Request) {
     parcelamentos: (p.data ?? []).map((x) => ({ ...norm(x), valor_total: Number(x.valor_total) })) as Parcelamento[],
   });
 
-  const modelo = process.env.GEMINI_MODEL ?? "gemini-2.5-flash";
+  const modelo = process.env.GEMINI_MODEL ?? "gemini-3.8-flash";
   let resposta: Response;
   try {
     resposta = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent`, {
@@ -97,7 +97,7 @@ export async function POST(req: Request) {
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: INSTRUCAO_SISTEMA }] },
         contents: [{ role: "user", parts: [{ text: montarPedido(contexto, lido.pedido, lido.visao) }] }],
-        generationConfig: { temperature: 0.4, maxOutputTokens: 2048 },
+        generationConfig: { temperature: 0.4, maxOutputTokens: 4096 },
       }),
       signal: AbortSignal.timeout(30_000),
     });
