@@ -13,6 +13,7 @@ import {
   type Resumo,
   type Transacao,
 } from "@/lib/finance";
+import { Dica, PrimeirosPassos } from "./Ajuda";
 import { BarrasMeses, BarrasPessoas, Rosca } from "./Charts";
 
 const painel = "rounded-2xl bg-surface p-5 shadow-sm";
@@ -21,13 +22,14 @@ const botaoSecundario = "rounded-full border border-strong px-6 py-3 font-medium
 
 type Acoes = { onNovo: () => void; onComprar: () => void };
 
-function Cartoes({ itens }: { itens: { titulo: string; valor: number; cor?: string }[] }) {
+function Cartoes({ itens }: { itens: { titulo: string; valor: number; cor?: string; dica?: string }[] }) {
   return (
-    <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <section className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
       {itens.map((c) => (
-        <div key={c.titulo} className={`${painel} animar-entrada`}>
-          <p className="text-sm text-subtle">{c.titulo}</p>
-          <p className={`mt-2 text-2xl font-semibold ${c.cor ?? ""}`}>{brl(c.valor)}</p>
+        <div key={c.titulo} className="animar-entrada rounded-2xl bg-surface p-4 shadow-sm sm:p-5">
+          <p className="text-xs text-subtle sm:text-sm">{c.titulo}</p>
+          <p className={`mt-1.5 break-words text-lg font-semibold sm:mt-2 sm:text-2xl ${c.cor ?? ""}`}>{brl(c.valor)}</p>
+          {c.dica && <p className="mt-1 text-xs text-subtle">{c.dica}</p>}
         </div>
       ))}
     </section>
@@ -37,14 +39,20 @@ function Cartoes({ itens }: { itens: { titulo: string; valor: number; cor?: stri
 function Limites({ r }: { r: Resumo }) {
   return (
     <section className={painel}>
-      <h2 className="font-semibold">Limites do mês (50/30/20)</h2>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="font-semibold">Limites do mês (50/30/20)</h2>
+        <Dica>
+          <p>Sua renda do mês é dividida em três tetos: 50% necessidades, 30% lazer e 20% economias.</p>
+          <p>A barra fica verde, vira âmbar acima de 80% do limite e vermelha ao estourar.</p>
+        </Dica>
+      </div>
       {r.entradas <= 0 && <p className="mt-2 text-sm text-subtle">Cadastre uma entrada para calcular os limites.</p>}
       <div className="mt-4 space-y-4">
         {CATEGORIAS.map((c) => {
           const pct = r.limite[c] > 0 ? (r.gasto[c] / r.limite[c]) * 100 : 0;
           return (
             <div key={c}>
-              <div className="flex justify-between text-sm">
+              <div className="flex flex-wrap justify-between gap-x-3 text-sm">
                 <span>
                   {ROTULO[c]} ({REGRA[c] * 100}%)
                 </span>
@@ -83,11 +91,13 @@ function Movimentos({
   return (
     <section className={painel}>
       <h2 className="font-semibold">{titulo}</h2>
-      {ordenada.length === 0 && <p className="mt-2 text-sm text-subtle">Nada cadastrado ainda.</p>}
+      {ordenada.length === 0 && (
+        <p className="mt-2 text-sm text-subtle">Nada neste mês ainda. Toque em &ldquo;+ Cadastrar&rdquo; para lançar uma entrada ou um gasto.</p>
+      )}
       <ul className="mt-2 divide-y divide-line">
         {ordenada.map((t) => (
           <li key={t.id} className="flex items-center justify-between gap-3 py-3">
-            <div>
+            <div className="min-w-0 break-words">
               <p className="font-medium">{t.descricao}</p>
               <p className="text-xs text-subtle">
                 {t.data.split("-").reverse().join("/")} · {nomeDe(t.autor_email)}
@@ -95,7 +105,7 @@ function Movimentos({
                 {t.escopo === "casal" && " · casal"}
               </p>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex shrink-0 items-center gap-3">
               <span className={t.tipo === "entrada" ? "text-primary" : "text-danger"}>
                 {t.tipo === "entrada" ? "+" : "-"}
                 {brl(t.valor)}
@@ -134,8 +144,16 @@ export function PainelPessoal({
 } & Acoes) {
   const doMes = noMes(transacoes, mes).filter((t) => t.autor_email === pessoa.email && t.escopo === "pessoal");
   const r = resumir(doMes);
+  const meus = transacoes.filter((t) => t.autor_email === pessoa.email);
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 sm:space-y-8">
+      {!somenteLeitura && (
+        <PrimeirosPassos
+          temEntrada={meus.some((t) => t.tipo === "entrada")}
+          temGasto={meus.some((t) => t.tipo === "saida")}
+          onNovo={acoes.onNovo}
+        />
+      )}
       {somenteLeitura && (
         <p className="rounded-lg bg-muted px-4 py-3 text-sm text-subtle">
           Você está vendo o painel de <strong className="text-foreground">{pessoa.nome}</strong> (somente leitura).
@@ -143,10 +161,10 @@ export function PainelPessoal({
       )}
       <Cartoes
         itens={[
-          { titulo: "Disponível para gastar", valor: r.saldo, cor: r.saldo < 0 ? "text-danger" : "text-primary" },
-          { titulo: "Reservado / Guardado", valor: r.gasto.economia },
+          { titulo: "Disponível para gastar", valor: r.saldo, cor: r.saldo < 0 ? "text-danger" : "text-primary", dica: "Entradas menos saídas do mês" },
+          { titulo: "Reservado / Guardado", valor: r.gasto.economia, dica: "O que foi para economias" },
           { titulo: "Entradas do mês", valor: r.entradas },
-          { titulo: "Gastos do mês", valor: r.gasto.necessidade + r.gasto.lazer },
+          { titulo: "Gastos do mês", valor: r.gasto.necessidade + r.gasto.lazer, dica: "Necessidades + lazer" },
         ]}
       />
       {!somenteLeitura && (
@@ -203,7 +221,11 @@ export function PainelCasal({
   const taxaEconomia = r.entradas > 0 ? Math.round((r.gasto.economia / r.entradas) * 100) : 0;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 sm:space-y-8">
+      <Dica titulo="O que é esta tela?">
+        <p>Aqui os dois painéis se juntam: tudo que cada um recebeu e gastou neste mês, mais os gastos marcados como &ldquo;do casal&rdquo;.</p>
+        <p>Passe o mouse (ou toque) nos gráficos para ver os valores exatos.</p>
+      </Dica>
       <Cartoes
         itens={[
           { titulo: "Saldo do casal", valor: r.saldo, cor: r.saldo < 0 ? "text-danger" : "text-primary" },
@@ -244,7 +266,7 @@ export function PainelCasal({
                 Gastos do casal no mês: <strong className="text-foreground">{brl(divisao.totalCasal)}</strong>, divididos pela proporção da renda de cada um.
               </p>
               {divisao.partes.map((p) => (
-                <div key={p.pessoa.email} className="flex justify-between">
+                <div key={p.pessoa.email} className="flex flex-wrap justify-between gap-x-3">
                   <span>{p.pessoa.nome}</span>
                   <span>
                     deveria {brl(p.devido)} · pagou {brl(p.pago)}

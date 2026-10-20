@@ -17,6 +17,12 @@ import {
 export const campo = "w-full rounded-lg border border-line bg-background px-3 py-2";
 const botaoPrimario = "w-full rounded-full bg-primary px-6 py-3 font-medium text-on-primary";
 
+const DICA_CATEGORIA: Record<Categoria, string> = {
+  necessidade: "Necessidades: aluguel, contas, mercado, transporte, dívidas fixas.",
+  lazer: "Lazer: saídas, hobbies, streaming, compras pessoais.",
+  economia: "Economias: o que você guardou ou investiu. Conta como Reservado.",
+};
+
 export type NovaTransacao = Omit<Transacao, "id" | "autor_email">;
 
 export function Modal({ titulo, onFechar, children }: { titulo: string; onFechar: () => void; children: React.ReactNode }) {
@@ -27,7 +33,7 @@ export function Modal({ titulo, onFechar, children }: { titulo: string; onFechar
       aria-modal="true"
       onClick={onFechar}
     >
-      <div className="animar-entrada w-full max-w-md rounded-2xl bg-surface p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+      <div className="animar-entrada max-h-[90dvh] w-full max-w-md overflow-y-auto rounded-2xl bg-surface p-5 shadow-xl sm:p-6" onClick={(e) => e.stopPropagation()}>
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold">{titulo}</h2>
           <button type="button" aria-label="Fechar" onClick={onFechar} className="rounded-full px-2 text-subtle">
@@ -93,6 +99,11 @@ export function FormLancamento({
             </button>
           ))}
         </div>
+        <p className="text-xs text-subtle">
+          {tipo === "entrada"
+            ? "Entrada é dinheiro que chegou: salário, renda extra, reembolso. É sempre pessoal e define seus limites do mês."
+            : "Gasto é dinheiro que saiu. Escolha abaixo se é só seu ou do casal, e a categoria."}
+        </p>
         <input className={campo} placeholder="Descrição (ex: Mercado)" value={descricao} onChange={(e) => setDescricao(e.target.value)} />
         <input className={campo} placeholder="Valor (ex: 150,00)" inputMode="decimal" value={valor} onChange={(e) => setValor(e.target.value)} />
         {tipo === "saida" && (
@@ -108,6 +119,10 @@ export function FormLancamento({
                 </option>
               ))}
             </select>
+            <p className="text-xs text-subtle">
+              {escopo === "casal" ? "Gasto do casal: aparece só na visão Casal e é dividido pela renda de cada um. " : ""}
+              {DICA_CATEGORIA[categoria]}
+            </p>
           </>
         )}
         <input className={campo} type="date" value={data} onChange={(e) => setData(e.target.value)} aria-label="Data" />

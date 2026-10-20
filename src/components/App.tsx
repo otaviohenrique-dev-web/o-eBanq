@@ -4,7 +4,9 @@ import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { hoje, type Pessoa, type Resumo, type Transacao, resumir, noMes } from "@/lib/finance";
 import { configurado, supabase } from "@/lib/supabase";
+import { Tutorial } from "./Ajuda";
 import { FormCompra, FormLancamento, type NovaTransacao } from "./Forms";
+import { Logo, Marca } from "./Marca";
 import { PainelCasal, PainelPessoal } from "./Views";
 
 type Visao = "meu" | "par" | "casal";
@@ -63,11 +65,11 @@ function Avatar({ sessao, nome }: { sessao: Session; nome: string }) {
 
 function Tela({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-5 px-6 text-center">
+    <div className="flex flex-1 flex-col items-center justify-center gap-5 px-6 py-16 text-center">
       <div className="absolute right-4 top-4 rounded-full bg-header p-1">
         <BotaoTema />
       </div>
-      {children}
+      <div className="animar-entrada flex flex-col items-center gap-5">{children}</div>
     </div>
   );
 }
@@ -99,7 +101,7 @@ export default function App() {
   const [carregado, setCarregado] = useState(false);
   const [erro, setErro] = useState("");
   const [visao, setVisao] = useState<Visao>("meu");
-  const [modal, setModal] = useState<"lancar" | "comprar" | null>(null);
+  const [modal, setModal] = useState<"lancar" | "comprar" | "ajuda" | null>(null);
   const [menu, setMenu] = useState(false);
 
   useEffect(() => {
@@ -119,6 +121,13 @@ export default function App() {
     setPessoas(r.pessoas);
     setTransacoes(r.transacoes);
     setCarregado(true);
+    // Primeiro acesso neste navegador: abre o guia "Como usar" uma única vez.
+    try {
+      if (!localStorage.getItem("tutorial-visto")) {
+        localStorage.setItem("tutorial-visto", "1");
+        setModal("ajuda");
+      }
+    } catch {}
   }, []);
 
   const carregar = useCallback(() => buscar().then(aplicar), [aplicar]);
@@ -170,8 +179,9 @@ export default function App() {
   if (!sessao || !email) {
     return (
       <Tela>
-        <h1 className="text-3xl font-semibold">o-ebanq</h1>
-        <p className="max-w-sm text-subtle">Contabilidade e inteligência financeira para casais. Entre com a conta Google autorizada.</p>
+        <Marca size={96} />
+        <h1 className="text-3xl font-semibold tracking-tight">o-ebanq</h1>
+        <p className="max-w-sm text-subtle">Finanças a dois, com clareza e segurança. Entre com a conta Google autorizada.</p>
         <button type="button" onClick={entrarComGoogle} className="flex items-center gap-3 rounded-full bg-primary px-6 py-3 font-medium text-on-primary">
           <span aria-hidden className="flex h-6 w-6 items-center justify-center rounded-full bg-white font-bold text-blue-600">G</span>
           Entrar com Google
@@ -236,10 +246,21 @@ export default function App() {
 
   return (
     <div className="flex flex-1 flex-col">
-      <header className="bg-header px-6 py-3 text-white">
+      <header className="sticky top-0 z-20 bg-header px-4 py-3 text-white shadow-md sm:px-6">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
-          <h1 className="text-xl font-semibold">o-ebanq</h1>
-          <div className="flex items-center gap-4">
+          <h1>
+            <Logo />
+          </h1>
+          <div className="flex items-center gap-3 sm:gap-4">
+            <button
+              type="button"
+              aria-label="Como usar"
+              title="Como usar"
+              onClick={() => setModal("ajuda")}
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-white/15 text-sm font-semibold"
+            >
+              ?
+            </button>
             <BotaoTema />
             <div className="relative">
               <button type="button" aria-label="Menu da conta" aria-expanded={menu} onClick={() => setMenu((m) => !m)} className="rounded-full">
@@ -249,7 +270,17 @@ export default function App() {
                 <div className="animar-entrada absolute right-0 z-20 mt-2 w-60 rounded-xl bg-surface p-4 text-foreground shadow-xl">
                   <p className="truncate font-medium">{nomeGoogle}</p>
                   <p className="truncate text-xs text-subtle">{email}</p>
-                  <button type="button" onClick={sair} className="mt-3 w-full rounded-lg border border-line px-3 py-2 text-sm">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenu(false);
+                      setModal("ajuda");
+                    }}
+                    className="mt-3 w-full rounded-lg border border-line px-3 py-2 text-sm"
+                  >
+                    Como usar
+                  </button>
+                  <button type="button" onClick={sair} className="mt-2 w-full rounded-lg border border-line px-3 py-2 text-sm">
                     Sair
                   </button>
                 </div>
@@ -259,15 +290,15 @@ export default function App() {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-5xl flex-1 space-y-6 px-6 py-6">
-        <nav className="inline-flex gap-1 rounded-full bg-muted p-1 text-sm" aria-label="Visões">
+      <main className="mx-auto w-full max-w-5xl flex-1 space-y-6 px-4 py-6 sm:px-6">
+        <nav className="flex w-full gap-1 rounded-full bg-muted p-1 text-sm sm:inline-flex sm:w-auto" aria-label="Visões">
           {abas.map((a) => (
             <button
               key={a.id}
               type="button"
               onClick={() => setVisao(a.id)}
               aria-current={visao === a.id}
-              className={`rounded-full px-4 py-1.5 ${visao === a.id ? "bg-primary font-medium text-on-primary" : "text-subtle"}`}
+              className={`min-w-0 flex-1 truncate rounded-full px-3 py-2 sm:flex-none sm:px-4 sm:py-1.5 ${visao === a.id ? "bg-primary font-medium text-on-primary" : "text-subtle"}`}
             >
               {a.nome}
             </button>
@@ -321,6 +352,7 @@ export default function App() {
         )}
       </main>
 
+      {modal === "ajuda" && <Tutorial onFechar={() => setModal(null)} />}
       {modal === "lancar" && (
         <FormLancamento escopoInicial={visao === "casal" ? "casal" : "pessoal"} onSalvar={salvar} onFechar={() => setModal(null)} />
       )}
