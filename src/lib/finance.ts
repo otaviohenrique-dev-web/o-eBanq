@@ -14,6 +14,8 @@ export type Transacao = {
   origem?: "fixa" | "parcela";
   refId?: string;
   conta_id?: string | null;
+  /** Parcela paga antes do vencimento (já está na data em que foi paga). */
+  adiantada?: boolean;
 };
 
 export type RendaFixa = {
@@ -37,6 +39,19 @@ export type Parcelamento = {
   primeira: string; // YYYY-MM
   categoria: Categoria;
   conta_id?: string | null;
+  data_compra?: string | null;
+  /** Dia do vencimento do cartão usado (copiado na criação). */
+  dia_vencimento?: number | null;
+};
+
+/** Parcela paga antes do vencimento. */
+export type Adiantada = {
+  id: string;
+  autor_email: string;
+  parcelamento_id: string;
+  indice: number;
+  pago_em: string;
+  valor_pago: number;
 };
 
 /** Banco ou conta de uma pessoa: serve de "tag" para rastrear onde o dinheiro está. */
@@ -46,6 +61,9 @@ export type Conta = {
   nome: string;
   cor: string;
   saldo_inicial: number;
+  /** Cartão de crédito: dia em que a fatura fecha e dia em que vence. */
+  dia_fechamento?: number | null;
+  dia_vencimento?: number | null;
 };
 
 export const CORES_CONTA = ["#2a78d6", "#eb6834", "#1baf7a", "#e87ba4", "#6250d6", "#eda100", "#e34948", "#008300"];
@@ -126,15 +144,66 @@ export function ultimosMeses(n: number, ate: string): string[] {
 
 const arredonda = (n: number) => Math.round(n * 100) / 100;
 
+/** Valor da parcela `k` (0 = primeira); a última absorve os centavos do arredondamento. */
+export function valorDaParcela(p: Parcelamento, k: number): number {
+  const base = Math.floor((p.valor_total / p.parcelas) * 100) / 100;
+  return k === p.parcelas - 1 ? arredonda(p.valor_total - base * (p.parcelas - 1)) : base;
+}
+
+/** Reparte o valor realmente pago entre as parcelas, proporcional ao valor de cada uma. */
+export function distribuirPagamento(valores: number[], pagoTotal: number): number[] {
+  const total = valores.reduce((a, b) => a + b, 0);
+  let acumulado = 0;
+  return valores.map((v, i) => {
+    if (i === valores.length - 1) return Math.max(0, arredonda(pagoTotal - acumulado));
+    const parte = total > 0 ? arredonda((pagoTotal * v) / total) : arredonda(pagoTotal / valores.length);
+    acumulado = arredonda(acumulado + parte);
+    return parte;
+  });
+}
+
+/** Data de vencimento da parcela `k` (usa o dia do cartão, ou o dia 1 se não houver cartão). */
+export const vencimentoDaParcela = (p: Parcelamento, k: number) => `${addMeses(p.primeira, k)}-${p2(p.dia_vencimento ?? 1)}`;
+
+/** Índices das parcelas ainda a pagar a partir de `mes` (inclusive), sem as adiantadas. */
+export function pendentes(p: Parcelamento, mes: string, adiantadas: Adiantada[]): number[] {
+  const feitas = new Set(adiantadas.filter((a) => a.parcelamento_id === p.id).map((a) => a.indice));
+  const lista: number[] = [];
+  for (let k = Math.max(0, difMeses(p.primeira, mes)); k < p.parcelas; k++) if (!feitas.has(k)) lista.push(k);
+  return lista;
+}
+
+/**
+ * Fatura do cartão em que cai uma compra: do dia do fechamento em diante ela vai para a fatura
+ * seguinte. Se o vencimento é depois do fechamento, vence no mesmo mês em que a fatura fecha;
+ * senão, no mês seguinte.
+ */
+export function faturaDaCompra(dataCompra: string, fechamento: number, vencimento: number): { mes: string; vencimento: string } {
+  const [a, m, d] = dataCompra.split("-").map(Number);
+  const ym = `${a}-${p2(m)}`;
+  const fechaEm = d >= fechamento ? addMeses(ym, 1) : ym;
+  const venceEm = vencimento > fechamento ? fechaEm : addMeses(fechaEm, 1);
+  return { mes: venceEm, vencimento: `${venceEm}-${p2(vencimento)}` };
+}
+
+/** Próximo vencimento do cartão a partir de `hoje` (inclusive). */
+export function proximoVencimento(hoje: string, diaVencimento: number): string {
+  const ym = hoje.slice(0, 7);
+  const candidato = `${ym}-${p2(diaVencimento)}`;
+  return candidato >= hoje ? candidato : `${addMeses(ym, 1)}-${p2(diaVencimento)}`;
+}
+
 /**
  * Junta os lançamentos reais com os gerados: a renda fixa vira uma entrada em cada mês
- * ativo (até `ateMes`) e cada compra a prazo vira uma saída por parcela.
+ * ativo (até `ateMes`) e cada compra a prazo vira uma saída por parcela, no dia do vencimento.
+ * Parcelas adiantadas saem da fatura original e entram na data em que foram pagas.
  */
 export function expandir(
   ts: Transacao[],
   rendas: RendaFixa[],
   parcelamentos: Parcelamento[],
   ateMes: string,
+  adiantadas: Adiantada[] = [],
 ): Transacao[] {
   const geradas: Transacao[] = [];
   for (const r of rendas) {
@@ -155,23 +224,23 @@ export function expandir(
       });
     }
   }
+  const feitas = new Map(adiantadas.map((a) => [`${a.parcelamento_id}-${a.indice}`, a]));
   for (const p of parcelamentos) {
-    const base = Math.floor((p.valor_total / p.parcelas) * 100) / 100;
     for (let k = 0; k < p.parcelas; k++) {
-      const m = addMeses(p.primeira, k);
-      const ultima = k === p.parcelas - 1;
+      const ad = feitas.get(`${p.id}-${k}`);
       geradas.push({
         id: `parcela-${p.id}-${k}`,
         autor_email: p.autor_email,
         escopo: p.escopo,
         tipo: "saida",
         descricao: `${p.descricao} (${k + 1}/${p.parcelas})`,
-        valor: ultima ? arredonda(p.valor_total - base * (p.parcelas - 1)) : base,
+        valor: ad ? ad.valor_pago : valorDaParcela(p, k),
         categoria: p.categoria,
-        data: `${m}-01`,
+        data: ad ? ad.pago_em : vencimentoDaParcela(p, k),
         origem: "parcela",
         refId: p.id,
         conta_id: p.conta_id ?? null,
+        adiantada: Boolean(ad),
       });
     }
   }
@@ -343,6 +412,7 @@ export function planejarParcelas(
   parcelasTs: Transacao[],
   mes: string,
   base: number,
+  adiantadas: Adiantada[] = [],
 ): PlanoParcelas {
   const totalMes = (m: string) => soma(parcelasTs.filter((t) => t.data.startsWith(m)));
   const proxMes = addMeses(mes, 1);
@@ -362,10 +432,10 @@ export function planejarParcelas(
   // Só entram nas estratégias de quitação as compras que já começaram e ainda têm parcelas a pagar.
   const emCurso = parcelamentos
     .map((p) => {
-      const pos = difMeses(p.primeira, mes) + 1;
-      const restantes = p.parcelas - pos + 1;
-      const parcela = p.valor_total / p.parcelas;
-      return { p, pos, restantes, parcela, saldo: parcela * restantes, fim: addMeses(p.primeira, p.parcelas - 1) };
+      const pend = pendentes(p, mes, adiantadas);
+      const saldo = pend.reduce((acc, k) => acc + valorDaParcela(p, k), 0);
+      const fim = addMeses(p.primeira, pend.length > 0 ? pend[pend.length - 1] : 0);
+      return { p, pos: difMeses(p.primeira, mes) + 1, restantes: pend.length, parcela: p.valor_total / p.parcelas, saldo, fim };
     })
     .filter((a) => a.pos >= 1 && a.restantes > 0);
 

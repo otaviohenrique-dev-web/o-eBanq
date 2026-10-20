@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { BANCOS_COMUNS, brl, type Conta } from "@/lib/finance";
+
+const dataBR = (d: string) => d.split("-").reverse().join("/");
 import { Dica } from "./Ajuda";
 import { CampoValor } from "./CampoValor";
 
@@ -21,8 +23,9 @@ const estiloTipo = {
   casal: "bg-serie-2/20 text-foreground",
   fixa: "bg-primary/15 text-foreground",
   parcela: "bg-warning/20 text-foreground",
+  adiantada: "bg-primary/15 text-foreground",
 };
-const rotuloTipo = { pessoal: "👤 Pessoal", casal: "👥 Casal", fixa: "🔁 Renda fixa", parcela: "🧾 Parcela" };
+const rotuloTipo = { pessoal: "👤 Pessoal", casal: "👥 Casal", fixa: "🔁 Renda fixa", parcela: "🧾 Parcela", adiantada: "⏩ Adiantada" };
 
 /** Etiqueta que deixa claro se o lançamento é pessoal, do casal, renda fixa ou parcela. */
 export function ChipTipo({ tipo }: { tipo: keyof typeof estiloTipo }) {
@@ -62,6 +65,130 @@ export function SeletorConta({
   );
 }
 
+/** Uma linha de banco: saldo, dados do cartão de crédito (fechamento e vencimento) e fatura em aberto. */
+function LinhaConta({
+  conta,
+  saldo,
+  fatura,
+  dono,
+  editavel,
+  onExcluir,
+  onDefinirCartao,
+}: {
+  conta: Conta;
+  saldo: number;
+  fatura?: { vence: string; total: number };
+  dono: string | null;
+  editavel: boolean;
+  onExcluir: () => void;
+  onDefinirCartao: (id: string, fechamento: number | null, vencimento: number | null) => Promise<string | null>;
+}) {
+  const [editando, setEditando] = useState(false);
+  const [fecha, setFecha] = useState(String(conta.dia_fechamento ?? ""));
+  const [vence, setVence] = useState(String(conta.dia_vencimento ?? ""));
+  const [erro, setErro] = useState("");
+  const cartao = Boolean(conta.dia_fechamento && conta.dia_vencimento);
+
+  async function salvar(remover: boolean) {
+    const f = Math.floor(Number(fecha));
+    const v = Math.floor(Number(vence));
+    if (!remover && !(f >= 1 && f <= 28 && v >= 1 && v <= 28)) return setErro("Informe dias entre 1 e 28.");
+    const falha = await onDefinirCartao(conta.id, remover ? null : f, remover ? null : v);
+    if (falha) return setErro(falha);
+    setErro("");
+    setEditando(false);
+  }
+
+  return (
+    <li className="py-3 text-sm">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <span aria-hidden className="inline-block h-3 w-3 shrink-0 rounded-full" style={{ background: conta.cor }} />
+          <span className="min-w-0 break-words font-medium">{conta.nome}</span>
+          {dono && <span className="text-xs text-subtle">· {dono}</span>}
+        </div>
+        <div className="flex shrink-0 items-center gap-3">
+          <span className={saldo < 0 ? "text-danger" : ""}>{brl(saldo)}</span>
+          {editavel && (
+            <button type="button" aria-label={`Excluir ${conta.nome}`} onClick={onExcluir} className="rounded-full px-2 text-subtle hover:text-danger">
+              ✕
+            </button>
+          )}
+        </div>
+      </div>
+
+      {cartao && (
+        <p className="mt-1 text-xs text-subtle">
+          💳 Fecha dia {conta.dia_fechamento} · vence dia {conta.dia_vencimento}
+          {fatura && (
+            <>
+              {" "}
+              · fatura de {dataBR(fatura.vence)}: <strong className="text-foreground">{brl(fatura.total)}</strong>
+            </>
+          )}
+        </p>
+      )}
+
+      {editavel && !editando && (
+        <button
+          type="button"
+          onClick={() => setEditando(true)}
+          className="mt-2 rounded-full border border-line px-3 py-1 text-xs text-subtle"
+        >
+          {cartao ? "💳 Editar cartão" : "💳 É cartão de crédito? Definir fechamento e vencimento"}
+        </button>
+      )}
+      {editavel && editando && (
+        <div className="animar-entrada mt-2 space-y-2 rounded-lg bg-muted p-3">
+          <p className="text-xs text-subtle">
+            Compras a prazo neste cartão usam estas datas, mesmo as do casal. Compras a partir do dia do fechamento caem na fatura seguinte.
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="text-xs text-subtle">
+              Dia do fechamento
+              <input
+                className="mt-1 w-full rounded-lg border border-line bg-background px-3 py-2 text-sm"
+                type="number"
+                min={1}
+                max={28}
+                inputMode="numeric"
+                value={fecha}
+                onChange={(e) => setFecha(e.target.value)}
+              />
+            </label>
+            <label className="text-xs text-subtle">
+              Dia do vencimento
+              <input
+                className="mt-1 w-full rounded-lg border border-line bg-background px-3 py-2 text-sm"
+                type="number"
+                min={1}
+                max={28}
+                inputMode="numeric"
+                value={vence}
+                onChange={(e) => setVence(e.target.value)}
+              />
+            </label>
+          </div>
+          {erro && <p className="text-xs text-danger">{erro}</p>}
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => salvar(false)} className="rounded-full bg-primary px-4 py-1.5 text-xs font-medium text-on-primary">
+              Salvar
+            </button>
+            {cartao && (
+              <button type="button" onClick={() => salvar(true)} className="rounded-full border border-line px-4 py-1.5 text-xs text-subtle">
+                Não é cartão
+              </button>
+            )}
+            <button type="button" onClick={() => setEditando(false)} className="rounded-full px-3 py-1.5 text-xs text-subtle">
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+    </li>
+  );
+}
+
 /** Lista os bancos com o saldo atual de cada um e permite adicionar ou remover (só os próprios). */
 export function ContasPanel({
   titulo,
@@ -73,10 +200,14 @@ export function ContasPanel({
   mostrarDono,
   onAdicionar,
   onExcluir,
+  faturas,
+  onDefinirCartao,
 }: {
   titulo: string;
   contas: Conta[];
   saldos: Map<string, number>;
+  faturas: Map<string, { vence: string; total: number }>;
+  onDefinirCartao: (id: string, fechamento: number | null, vencimento: number | null) => Promise<string | null>;
   meuEmail: string;
   nomeDe: (email: string) => string;
   podeEditar: boolean;
@@ -115,26 +246,18 @@ export function ContasPanel({
 
       {contas.length === 0 && <p className="mt-3 text-sm text-subtle">Nenhum banco cadastrado ainda.</p>}
       <ul className="mt-2 divide-y divide-line">
-        {contas.map((c) => {
-          const s = saldos.get(c.id) ?? 0;
-          return (
-            <li key={c.id} className="flex items-center justify-between gap-3 py-3 text-sm">
-              <div className="flex min-w-0 items-center gap-2">
-                <span aria-hidden className="inline-block h-3 w-3 shrink-0 rounded-full" style={{ background: c.cor }} />
-                <span className="min-w-0 break-words font-medium">{c.nome}</span>
-                {mostrarDono && <span className="text-xs text-subtle">· {nomeDe(c.autor_email)}</span>}
-              </div>
-              <div className="flex shrink-0 items-center gap-3">
-                <span className={s < 0 ? "text-danger" : ""}>{brl(s)}</span>
-                {podeEditar && c.autor_email === meuEmail && (
-                  <button type="button" aria-label={`Excluir ${c.nome}`} onClick={() => onExcluir(c.id)} className="rounded-full px-2 text-subtle hover:text-danger">
-                    ✕
-                  </button>
-                )}
-              </div>
-            </li>
-          );
-        })}
+        {contas.map((c) => (
+          <LinhaConta
+            key={c.id}
+            conta={c}
+            saldo={saldos.get(c.id) ?? 0}
+            fatura={faturas.get(c.id)}
+            dono={mostrarDono ? nomeDe(c.autor_email) : null}
+            editavel={podeEditar && c.autor_email === meuEmail}
+            onExcluir={() => onExcluir(c.id)}
+            onDefinirCartao={onDefinirCartao}
+          />
+        ))}
       </ul>
       {contas.length > 1 && (
         <p className="mt-2 flex justify-between border-t border-line pt-3 text-sm">

@@ -5,11 +5,13 @@ import type { Session } from "@supabase/supabase-js";
 import {
   addMeses,
   CORES_CONTA,
+  distribuirPagamento,
   expandir,
   hoje,
   resumirMes,
   rotuloMes,
   saldoPorConta,
+  type Adiantada,
   type Conta,
   type Parcelamento,
   type Pessoa,
@@ -21,7 +23,15 @@ import { configurado, supabase } from "@/lib/supabase";
 import { Tutorial } from "./Ajuda";
 import Consultor from "./Consultor";
 import { FormLancamento, type NovaTransacao } from "./Forms";
-import { FormCompra, FormParcelamento, FormRendaFixa, type NovaRenda, type NovoParcelamento } from "./FormsPrazo";
+import {
+  FormAdiantar,
+  FormCompra,
+  FormParcelamento,
+  FormRendaFixa,
+  type LinhaAdiantamento,
+  type NovaRenda,
+  type NovoParcelamento,
+} from "./FormsPrazo";
 import { Logo, Marca } from "./Marca";
 import { PainelCasal, PainelPessoal, type Gestao } from "./Views";
 
@@ -96,22 +106,24 @@ type Carga = {
   rendas: RendaFixa[];
   parcelamentos: Parcelamento[];
   contas: Conta[];
+  adiantadas: Adiantada[];
 };
 
 async function buscar(): Promise<{ erro: string } | Carga> {
-  const [a, t, r, p, c] = await Promise.all([
+  const [a, t, r, p, c, d] = await Promise.all([
     supabase.from("autorizados").select("email,nome"),
     supabase.from("transacoes").select("*").order("data", { ascending: false }),
     supabase.from("rendas_fixas").select("*").order("inicio", { ascending: false }),
     supabase.from("parcelamentos").select("*").order("primeira", { ascending: false }),
     supabase.from("contas").select("*").order("criado_em", { ascending: true }),
+    supabase.from("parcelas_adiantadas").select("*"),
   ]);
-  const falha = a.error ?? t.error ?? r.error ?? p.error ?? c.error;
+  const falha = a.error ?? t.error ?? r.error ?? p.error ?? c.error ?? d.error;
   if (falha) {
-    const faltaTabela = /rendas_fixas|parcelamentos|contas|conta_id/.test(falha.message);
+    const faltaTabela = /rendas_fixas|parcelamentos|contas|conta_id|parcelas_adiantadas|dia_fechamento|dia_vencimento|data_compra/.test(falha.message);
     return {
       erro: faltaTabela
-        ? "Faltam tabelas no banco. No Supabase (SQL Editor), rode supabase/02-renda-fixa-e-parcelas.sql e depois supabase/03-bancos.sql."
+        ? "Faltam tabelas ou colunas no banco. No Supabase (SQL Editor), rode, em ordem, os arquivos 02, 03 e 04 da pasta supabase."
         : falha.message,
     };
   }
@@ -122,6 +134,7 @@ async function buscar(): Promise<{ erro: string } | Carga> {
     rendas: (r.data ?? []).map((x) => ({ ...minusculo(x), valor: Number(x.valor) })),
     parcelamentos: (p.data ?? []).map((x) => ({ ...minusculo(x), valor_total: Number(x.valor_total) })),
     contas: (c.data ?? []).map((x) => ({ ...minusculo(x), saldo_inicial: Number(x.saldo_inicial) })),
+    adiantadas: (d.data ?? []).map((x) => ({ ...minusculo(x), valor_pago: Number(x.valor_pago) })),
   };
 }
 
@@ -139,11 +152,13 @@ export default function App() {
   const [rendas, setRendas] = useState<RendaFixa[]>([]);
   const [parcelamentos, setParcelamentos] = useState<Parcelamento[]>([]);
   const [contas, setContas] = useState<Conta[]>([]);
+  const [adiantadas, setAdiantadas] = useState<Adiantada[]>([]);
+  const [alvoAdiantar, setAlvoAdiantar] = useState<string | null>(null);
   const [carregado, setCarregado] = useState(false);
   const [erro, setErro] = useState("");
   const [visao, setVisao] = useState<Visao>("meu");
   const [mesSel, setMesSel] = useState<string | null>(null);
-  const [modal, setModal] = useState<"lancar" | "comprar" | "ajuda" | "renda" | "parcelamento" | null>(null);
+  const [modal, setModal] = useState<"lancar" | "comprar" | "ajuda" | "renda" | "parcelamento" | "adiantar" | null>(null);
   const [menu, setMenu] = useState(false);
 
   useEffect(() => {
@@ -165,6 +180,7 @@ export default function App() {
     setRendas(r.rendas);
     setParcelamentos(r.parcelamentos);
     setContas(r.contas);
+    setAdiantadas(r.adiantadas);
     setCarregado(true);
     // Primeiro acesso neste navegador: abre o guia "Como usar" uma única vez.
     try {
@@ -189,6 +205,7 @@ export default function App() {
     setRendas([]);
     setParcelamentos([]);
     setContas([]);
+    setAdiantadas([]);
     await supabase.auth.signOut();
   }
 
@@ -217,6 +234,30 @@ export default function App() {
         autor_email: email,
       }),
     );
+
+  // Registra o pagamento antecipado: as parcelas saem da fatura original e entram na data paga.
+  const salvarAdiantamento = (linhas: LinhaAdiantamento[], pagoEm: string, valorPago: number) => {
+    const valores = distribuirPagamento(linhas.map((l) => l.valor), valorPago);
+    return gravar(
+      supabase.from("parcelas_adiantadas").insert(
+        linhas.map((l, i) => ({
+          parcelamento_id: l.parcelamento_id,
+          indice: l.indice,
+          pago_em: pagoEm,
+          valor_pago: valores[i],
+          autor_email: email,
+        })),
+      ),
+    );
+  };
+
+  function desfazerAdiantamento(parcelamentoId: string) {
+    if (!window.confirm("Desfazer os adiantamentos desta compra? As parcelas voltam para as datas originais.")) return;
+    return aoFalhar(supabase.from("parcelas_adiantadas").delete().eq("parcelamento_id", parcelamentoId));
+  }
+
+  const definirCartao = (id: string, fechamento: number | null, vencimento: number | null) =>
+    gravar(supabase.from("contas").update({ dia_fechamento: fechamento, dia_vencimento: vencimento }).eq("id", id));
 
   function encerrarRenda(id: string) {
     const renda = rendas.find((x) => x.id === id);
@@ -319,7 +360,7 @@ export default function App() {
   const mesMax = addMeses(mesAtual, 24);
 
   // Lançamentos reais + renda fixa e parcelas geradas para cada mês
-  const todas = expandir(transacoes, rendas, parcelamentos, mesMax);
+  const todas = expandir(transacoes, rendas, parcelamentos, mesMax, adiantadas);
 
   // Resumo usado pelo "Posso Comprar?" de acordo com a visão ativa
   const resumoVisao: Resumo = resumirMes(
@@ -343,6 +384,18 @@ export default function App() {
   const minhasContas = contas.filter((c) => c.autor_email === email);
 
   const g: Gestao = {
+    hoje: hoje(),
+    adiantadas,
+    onAdiantarFatura: () => {
+      setAlvoAdiantar(null);
+      setModal("adiantar");
+    },
+    onAdiantarCompra: (id) => {
+      setAlvoAdiantar(id);
+      setModal("adiantar");
+    },
+    onDesfazerAdiantamento: desfazerAdiantamento,
+    onDefinirCartao: definirCartao,
     contas,
     saldos,
     onAdicionarConta: adicionarConta,
@@ -481,6 +534,18 @@ export default function App() {
           resumo={resumoVisao}
           rotuloVisao={visao === "casal" ? "Casal" : "Meu painel"}
           consultarIA={consultarIA}
+          onFechar={() => setModal(null)}
+        />
+      )}
+      {modal === "adiantar" && (
+        <FormAdiantar
+          modo={alvoAdiantar ? "compra" : "fatura"}
+          compraId={alvoAdiantar ?? undefined}
+          parcelamentos={parcelamentos.filter((p) => p.autor_email === email)}
+          contas={minhasContas}
+          adiantadas={adiantadas}
+          mesPadrao={addMeses(mes, 1)}
+          onSalvar={salvarAdiantamento}
           onFechar={() => setModal(null)}
         />
       )}

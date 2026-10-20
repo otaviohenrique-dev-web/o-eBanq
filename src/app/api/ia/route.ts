@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import { CATEGORIAS, type Categoria, type Parcelamento, type RendaFixa, type Transacao } from "@/lib/finance";
+import { CATEGORIAS, type Adiantada, type Categoria, type Parcelamento, type RendaFixa, type Transacao } from "@/lib/finance";
 import { INSTRUCAO_SISTEMA, montarContexto, montarPedido, type PedidoIA, type VisaoIA } from "@/lib/ia";
 
 const LIMITE_POR_HORA = 30;
@@ -94,13 +94,14 @@ export async function POST(req: Request) {
   if (erroAuth || !email) return erro("Sessão inválida. Entre novamente.", 401);
   if (!dentroDoLimite(email)) return erro("Muitas perguntas seguidas. Tente de novo daqui a pouco.", 429);
 
-  const [a, t, r, p] = await Promise.all([
+  const [a, t, r, p, d] = await Promise.all([
     sb.from("autorizados").select("email,nome"),
     sb.from("transacoes").select("*"),
     sb.from("rendas_fixas").select("*"),
     sb.from("parcelamentos").select("*"),
+    sb.from("parcelas_adiantadas").select("*"),
   ]);
-  const falha = a.error ?? t.error ?? r.error ?? p.error;
+  const falha = a.error ?? t.error ?? r.error ?? p.error ?? d.error;
   if (falha) return erro("Não foi possível ler os dados.", 500);
   const pessoas = (a.data ?? []).map((x) => ({ email: String(x.email).toLowerCase(), nome: String(x.nome ?? "") }));
   if (!pessoas.some((x) => x.email === email)) return erro("Acesso não autorizado.", 403);
@@ -114,6 +115,7 @@ export async function POST(req: Request) {
     transacoes: (t.data ?? []).map((x) => ({ ...norm(x), valor: Number(x.valor) })) as Transacao[],
     rendas: (r.data ?? []).map((x) => ({ ...norm(x), valor: Number(x.valor) })) as RendaFixa[],
     parcelamentos: (p.data ?? []).map((x) => ({ ...norm(x), valor_total: Number(x.valor_total) })) as Parcelamento[],
+    adiantadas: (d.data ?? []).map((x) => ({ ...norm(x), valor_pago: Number(x.valor_pago) })) as Adiantada[],
   });
 
   const corpo = JSON.stringify({

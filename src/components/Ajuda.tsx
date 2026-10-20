@@ -100,6 +100,11 @@ const secoes = [
       "Use + Compra a prazo com o valor total e o número de parcelas. O app lança uma parcela por mês, mostra a próxima fatura (por pessoa, no Casal), o peso das parcelas na renda mês a mês e sugere estratégias de pagamento. A parcela entra como gasto no mês em que vence, na categoria do que foi comprado (geladeira é Necessidade, TV é Lazer), e já conta nos limites. O ideal é que as parcelas somem até 20% da renda.",
   },
   {
+    titulo: "Cartão de crédito e adiantamento",
+    texto:
+      "Em Meus bancos, toque em 💳 no cartão e informe o dia do fechamento e o do vencimento. Nas compras a prazo feitas nesse cartão, o app calcula sozinho em qual fatura a primeira parcela cai (compras a partir do dia do fechamento vão para a fatura seguinte) e as demais vencem todo mês no dia do vencimento. Vale também para compra do casal feita no seu cartão: ela segue o seu fechamento, e o acerto entre vocês continua automático. Para pagar antes do vencimento, use ⏩ Adiantar fatura (um mês inteiro) ou ⏩ Adiantar parcelas (em cada compra): as parcelas saem da fatura original e entram na data em que você pagou, com o valor pago (se houve desconto, informe).",
+  },
+  {
     titulo: "Meses",
     texto: "As setas no topo trocam o mês exibido. Dá para olhar meses passados e ver quanto já está comprometido em meses futuros.",
   },

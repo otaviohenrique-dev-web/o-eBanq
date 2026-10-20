@@ -8,6 +8,7 @@ import {
   rotuloMes,
   ROTULO,
   ultimosMeses,
+  type Adiantada,
   type Categoria,
   type Parcelamento,
   type Pessoa,
@@ -36,15 +37,16 @@ export function montarContexto(args: {
   transacoes: Transacao[];
   rendas: RendaFixa[];
   parcelamentos: Parcelamento[];
+  adiantadas: Adiantada[];
 }) {
-  const { visao, mes, email, pessoas, transacoes, rendas, parcelamentos } = args;
-  const todas = expandir(transacoes, rendas, parcelamentos, addMeses(mes, 12));
+  const { visao, mes, email, pessoas, transacoes, rendas, parcelamentos, adiantadas } = args;
+  const todas = expandir(transacoes, rendas, parcelamentos, addMeses(mes, 12), adiantadas);
   const filtro = (t: Transacao) => (visao === "casal" ? true : t.autor_email === email && t.escopo === "pessoal");
   const minhas = todas.filter(filtro);
   const r = resumirMes(todas, mes, filtro);
   const doMes = minhas.filter((t) => t.data.startsWith(mes));
   const parcelamentosDoRecorte = parcelamentos.filter((p) => (visao === "casal" ? true : p.autor_email === email && p.escopo === "pessoal"));
-  const plano = planejarParcelas(parcelamentosDoRecorte, minhas.filter((t) => t.origem === "parcela"), mes, r.base);
+  const plano = planejarParcelas(parcelamentosDoRecorte, minhas.filter((t) => t.origem === "parcela"), mes, r.base, adiantadas);
 
   const contexto: Record<string, unknown> = {
     visao: visao === "casal" ? "casal (soma dos dois)" : "individual (somente a pessoa que pergunta)",
@@ -72,6 +74,7 @@ export function montarContexto(args: {
         valor: r2(i.valor),
         categoria: ROTULO[i.categoria],
       })),
+      parcelas_ja_adiantadas: adiantadas.filter((a) => parcelamentosDoRecorte.some((p) => p.id === a.parcelamento_id)).length,
       estrategias_calculadas: plano.estrategias.map((e) => `${e.titulo}: ${e.texto}`),
     },
     parcelas_proximos_6_meses: Array.from({ length: 6 }, (_, i) => {
