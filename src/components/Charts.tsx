@@ -110,6 +110,39 @@ export function BarrasMeses({ dados }: { dados: { mes: string; entradas: number;
   );
 }
 
+/** Total de parcelas que vencem em cada um dos próximos meses. */
+export function BarrasParcelas({ dados }: { dados: { mes: string; total: number }[] }) {
+  const max = Math.max(...dados.map((d) => d.total), 1);
+  const L = 360;
+  const A = 130;
+  const base = A - 20;
+  const largura = L / dados.length;
+  return (
+    <svg viewBox={`0 0 ${L} ${A}`} className="w-full" role="img" aria-label="Parcelas a pagar nos próximos meses">
+      <line x1="0" x2={L} y1={base} y2={base} stroke="var(--line)" />
+      {dados.map((d, i) => {
+        const x = i * largura + largura / 2;
+        const h = (d.total / max) * (base - 22);
+        return (
+          <g key={d.mes}>
+            <rect x={x - 14} y={base - h} width="28" height={h} rx="3" fill="var(--serie-2)">
+              <title>{`${rotuloMes(d.mes)} · Parcelas: ${brl(d.total)}`}</title>
+            </rect>
+            {d.total > 0 && (
+              <text x={x} y={base - h - 5} textAnchor="middle" fontSize="9" fill="var(--foreground)">
+                {Math.round(d.total).toLocaleString("pt-BR")}
+              </text>
+            )}
+            <text x={x} y={A - 5} textAnchor="middle" fontSize="10" fill="var(--subtle)">
+              {rotuloMes(d.mes)}
+            </text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
 /** Quanto cada pessoa recebeu e gastou no mês. */
 export function BarrasPessoas({ dados }: { dados: { nome: string; entradas: number; saidas: number }[] }) {
   const max = Math.max(...dados.flatMap((d) => [d.entradas, d.saidas]), 1);

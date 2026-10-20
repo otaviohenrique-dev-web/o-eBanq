@@ -5,12 +5,9 @@ import {
   CATEGORIAS,
   hoje,
   parseValor,
-  podeComprar,
   ROTULO,
   type Categoria,
   type Escopo,
-  type Parecer,
-  type Resumo,
   type Transacao,
 } from "@/lib/finance";
 
@@ -135,48 +132,3 @@ export function FormLancamento({
   );
 }
 
-export function FormCompra({ resumo, rotuloVisao, onFechar }: { resumo: Resumo; rotuloVisao: string; onFechar: () => void }) {
-  const [valor, setValor] = useState("");
-  const [parcelas, setParcelas] = useState("1");
-  const [categoria, setCategoria] = useState<Categoria>("lazer");
-  const [parecer, setParecer] = useState<Parecer | null>(null);
-  const [erro, setErro] = useState("");
-
-  function analisar(ev: React.FormEvent) {
-    ev.preventDefault();
-    const v = parseValor(valor);
-    const p = Math.floor(Number(parcelas));
-    if (!(v > 0)) return setErro("Informe um valor maior que zero.");
-    if (!(p >= 1)) return setErro("Informe ao menos 1 parcela.");
-    setErro("");
-    setParecer(podeComprar(resumo, categoria, v, p));
-  }
-
-  const cor = {
-    ok: "bg-primary/15 text-foreground",
-    atencao: "bg-warning/20 text-foreground",
-    nao: "bg-danger/15 text-foreground",
-  };
-
-  return (
-    <Modal titulo="Posso comprar?" onFechar={onFechar}>
-      <form onSubmit={analisar} className="space-y-3">
-        <input className={campo} placeholder="Valor total (ex: 1200,00)" inputMode="decimal" value={valor} onChange={(e) => setValor(e.target.value)} />
-        <input className={campo} type="number" min={1} placeholder="Parcelas" value={parcelas} onChange={(e) => setParcelas(e.target.value)} aria-label="Parcelas" />
-        <select className={campo} value={categoria} onChange={(e) => setCategoria(e.target.value as Categoria)} aria-label="Categoria">
-          {CATEGORIAS.map((c) => (
-            <option key={c} value={c}>
-              {ROTULO[c]}
-            </option>
-          ))}
-        </select>
-        {erro && <p className="text-sm text-danger">{erro}</p>}
-        <button type="submit" className={botaoPrimario}>
-          Analisar
-        </button>
-      </form>
-      {parecer && <p className={`animar-entrada mt-4 rounded-lg p-3 text-sm ${cor[parecer.nivel]}`}>{parecer.texto}</p>}
-      <p className="mt-3 text-xs text-subtle">Análise sobre: {rotuloVisao}, mês atual.</p>
-    </Modal>
-  );
-}

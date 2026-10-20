@@ -28,14 +28,16 @@ export function PrimeirosPassos({
   temEntrada,
   temGasto,
   onNovo,
+  onSalario,
 }: {
   temEntrada: boolean;
   temGasto: boolean;
   onNovo: () => void;
+  onSalario: () => void;
 }) {
   if (temEntrada && temGasto) return null;
   const passos = [
-    { feito: temEntrada, texto: "Cadastre sua renda (salário ou outras entradas) em + Cadastrar > Entrada." },
+    { feito: temEntrada, texto: "Cadastre seu salário em \"Salário e renda\": ele conta sozinho todo mês. Se seu dinheiro entra sem data certa, lance cada entrada em + Cadastrar quando chegar." },
     { feito: temGasto, texto: "Registre um gasto e escolha a categoria: necessidade, lazer ou economia." },
     { feito: temEntrada && temGasto, texto: "Acompanhe os limites 50/30/20 e teste o 🔍 Posso Comprar? antes de gastar." },
   ];
@@ -57,9 +59,16 @@ export function PrimeirosPassos({
           </li>
         ))}
       </ol>
-      <button type="button" onClick={onNovo} className="mt-4 rounded-full bg-primary px-5 py-2 text-sm font-medium text-on-primary">
-        + Cadastrar agora
-      </button>
+      <div className="mt-4 flex flex-wrap gap-2">
+        {!temEntrada && (
+          <button type="button" onClick={onSalario} className="rounded-full bg-primary px-5 py-2 text-sm font-medium text-on-primary">
+            Cadastrar salário
+          </button>
+        )}
+        <button type="button" onClick={onNovo} className="rounded-full border border-strong px-5 py-2 text-sm font-medium text-strong">
+          + Cadastrar entrada ou gasto
+        </button>
+      </div>
     </section>
   );
 }
@@ -74,6 +83,25 @@ const secoes = [
     titulo: "Regra 50/30/20",
     texto:
       "Da sua renda do mês, até 50% vai para necessidades (contas, mercado, transporte), 30% para lazer e 20% para economias. As barras ficam verdes, âmbar acima de 80% do limite e vermelhas acima de 100%.",
+  },
+  {
+    titulo: "Salário e renda variável",
+    texto:
+      "Cadastre seu salário uma vez em \"Salário e renda\": ele conta sozinho em todo mês. Para dinheiro que entra sem data certa, lance cada entrada em + Cadastrar quando chegar. Os limites usam a renda fixa mais o maior valor entre o recebido no mês e a média dos 3 meses anteriores.",
+  },
+  {
+    titulo: "Compras a prazo",
+    texto:
+      "Use + Compra a prazo com o valor total e o número de parcelas. O app lança uma parcela por mês e mostra quanto vence em cada mês, com os próximos 6 meses em gráfico. O ideal é que as parcelas somem até 20% da renda.",
+  },
+  {
+    titulo: "Meses",
+    texto: "As setas no topo trocam o mês exibido. Dá para olhar meses passados e ver quanto já está comprometido em meses futuros.",
+  },
+  {
+    titulo: "Assistente inteligente (IA)",
+    texto:
+      "O botão Analisar dá sugestões com base nos números do mês, no seu painel ou no do casal. Você também pode fazer perguntas, e pedir o parecer da IA dentro do Posso Comprar. A IA recebe só valores, sem nomes nem e-mails.",
   },
   {
     titulo: "Cadastrar entradas e gastos",

@@ -2,12 +2,24 @@
 
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { hoje, type Pessoa, type Resumo, type Transacao, resumir, noMes } from "@/lib/finance";
+import {
+  addMeses,
+  expandir,
+  hoje,
+  resumirMes,
+  rotuloMes,
+  type Parcelamento,
+  type Pessoa,
+  type RendaFixa,
+  type Resumo,
+  type Transacao,
+} from "@/lib/finance";
 import { configurado, supabase } from "@/lib/supabase";
 import { Tutorial } from "./Ajuda";
-import { FormCompra, FormLancamento, type NovaTransacao } from "./Forms";
+import { FormLancamento, type NovaTransacao } from "./Forms";
+import { FormCompra, FormParcelamento, FormRendaFixa, type NovaRenda, type NovoParcelamento } from "./FormsPrazo";
 import { Logo, Marca } from "./Marca";
-import { PainelCasal, PainelPessoal } from "./Views";
+import { PainelCasal, PainelPessoal, type Gestao } from "./Views";
 
 type Visao = "meu" | "par" | "casal";
 
@@ -74,16 +86,30 @@ function Tela({ children }: { children: React.ReactNode }) {
   );
 }
 
-async function buscar(): Promise<{ erro: string } | { pessoas: Pessoa[]; transacoes: Transacao[] }> {
-  const [a, t] = await Promise.all([
+type Carga = { pessoas: Pessoa[]; transacoes: Transacao[]; rendas: RendaFixa[]; parcelamentos: Parcelamento[] };
+
+async function buscar(): Promise<{ erro: string } | Carga> {
+  const [a, t, r, p] = await Promise.all([
     supabase.from("autorizados").select("email,nome"),
     supabase.from("transacoes").select("*").order("data", { ascending: false }),
+    supabase.from("rendas_fixas").select("*").order("inicio", { ascending: false }),
+    supabase.from("parcelamentos").select("*").order("primeira", { ascending: false }),
   ]);
-  const falha = a.error ?? t.error;
-  if (falha) return { erro: falha.message };
+  const falha = a.error ?? t.error ?? r.error ?? p.error;
+  if (falha) {
+    const faltaTabela = /rendas_fixas|parcelamentos/.test(falha.message);
+    return {
+      erro: faltaTabela
+        ? "Faltam as tabelas de renda fixa e parcelas no banco. Rode supabase/02-renda-fixa-e-parcelas.sql no Supabase."
+        : falha.message,
+    };
+  }
+  const minusculo = <T extends { autor_email: string }>(x: T) => ({ ...x, autor_email: x.autor_email.toLowerCase() });
   return {
-    pessoas: (a.data ?? []).map((p) => ({ email: p.email.toLowerCase(), nome: p.nome ?? p.email.split("@")[0] })),
-    transacoes: (t.data ?? []).map((x) => ({ ...x, autor_email: x.autor_email.toLowerCase(), valor: Number(x.valor) })),
+    pessoas: (a.data ?? []).map((x) => ({ email: x.email.toLowerCase(), nome: x.nome ?? x.email.split("@")[0] })),
+    transacoes: (t.data ?? []).map((x) => ({ ...minusculo(x), valor: Number(x.valor) })),
+    rendas: (r.data ?? []).map((x) => ({ ...minusculo(x), valor: Number(x.valor) })),
+    parcelamentos: (p.data ?? []).map((x) => ({ ...minusculo(x), valor_total: Number(x.valor_total) })),
   };
 }
 
@@ -98,10 +124,13 @@ export default function App() {
   const [sessao, setSessao] = useState<Session | null | undefined>(undefined);
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
   const [transacoes, setTransacoes] = useState<Transacao[]>([]);
+  const [rendas, setRendas] = useState<RendaFixa[]>([]);
+  const [parcelamentos, setParcelamentos] = useState<Parcelamento[]>([]);
   const [carregado, setCarregado] = useState(false);
   const [erro, setErro] = useState("");
   const [visao, setVisao] = useState<Visao>("meu");
-  const [modal, setModal] = useState<"lancar" | "comprar" | "ajuda" | null>(null);
+  const [mesSel, setMesSel] = useState<string | null>(null);
+  const [modal, setModal] = useState<"lancar" | "comprar" | "ajuda" | "renda" | "parcelamento" | null>(null);
   const [menu, setMenu] = useState(false);
 
   useEffect(() => {
@@ -120,6 +149,8 @@ export default function App() {
     setErro("");
     setPessoas(r.pessoas);
     setTransacoes(r.transacoes);
+    setRendas(r.rendas);
+    setParcelamentos(r.parcelamentos);
     setCarregado(true);
     // Primeiro acesso neste navegador: abre o guia "Como usar" uma única vez.
     try {
@@ -141,7 +172,34 @@ export default function App() {
     setCarregado(false);
     setPessoas([]);
     setTransacoes([]);
+    setRendas([]);
+    setParcelamentos([]);
     await supabase.auth.signOut();
+  }
+
+  // Grava, recarrega e devolve a mensagem de erro (ou null).
+  async function gravar(pedido: PromiseLike<{ error: { message: string } | null }>): Promise<string | null> {
+    const { error } = await pedido;
+    if (error) return error.message;
+    await carregar();
+    return null;
+  }
+
+  const salvarRenda = (r: NovaRenda) => gravar(supabase.from("rendas_fixas").insert({ ...r, autor_email: email }));
+  const salvarParcelamento = (p: NovoParcelamento) => gravar(supabase.from("parcelamentos").insert({ ...p, autor_email: email }));
+
+  async function aoFalhar(pedido: PromiseLike<{ error: { message: string } | null }>) {
+    const falha = await gravar(pedido);
+    if (falha) setErro(falha);
+  }
+
+  function encerrarRenda(id: string) {
+    const renda = rendas.find((x) => x.id === id);
+    if (!renda) return;
+    // Deixa de contar a partir do mês atual; se nunca chegou a valer, apaga.
+    const fim = addMeses(hoje().slice(0, 7), -1);
+    if (renda.inicio > fim) return aoFalhar(supabase.from("rendas_fixas").delete().eq("id", id));
+    return aoFalhar(supabase.from("rendas_fixas").update({ fim }).eq("id", id));
   }
 
   async function salvar(nova: NovaTransacao): Promise<string | null> {
@@ -230,13 +288,45 @@ export default function App() {
   const eu: Pessoa = { email, nome: euAutorizado.nome || nomeGoogle };
   const par = pessoas.find((p) => p.email !== email);
   const nomeDe = (e: string) => pessoas.find((p) => p.email === e)?.nome ?? e.split("@")[0];
-  const mes = hoje().slice(0, 7);
+  const mesAtual = hoje().slice(0, 7);
+  const mes = mesSel ?? mesAtual;
+  const mesMin = addMeses(mesAtual, -24);
+  const mesMax = addMeses(mesAtual, 24);
+
+  // Lançamentos reais + renda fixa e parcelas geradas para cada mês
+  const todas = expandir(transacoes, rendas, parcelamentos, mesMax);
 
   // Resumo usado pelo "Posso Comprar?" de acordo com a visão ativa
-  const resumoVisao: Resumo =
-    visao === "casal"
-      ? resumir(noMes(transacoes, mes))
-      : resumir(noMes(transacoes, mes).filter((t) => t.autor_email === email && t.escopo === "pessoal"));
+  const resumoVisao: Resumo = resumirMes(
+    todas,
+    mes,
+    visao === "casal" ? undefined : (t) => t.autor_email === email && t.escopo === "pessoal",
+  );
+
+  async function consultarIA(pedido: Record<string, unknown>): Promise<string> {
+    const resposta = await fetch("/api/ia", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessao?.access_token ?? ""}` },
+      body: JSON.stringify({ ...pedido, visao: visao === "casal" ? "casal" : "pessoal", mes }),
+    });
+    const json = await resposta.json().catch(() => ({}));
+    if (!resposta.ok) throw new Error(json.erro ?? "Não foi possível consultar a IA.");
+    return json.texto as string;
+  }
+
+  const g: Gestao = {
+    rendas,
+    parcelamentos,
+    consultarIA,
+    onNovo: () => setModal("lancar"),
+    onComprar: () => setModal("comprar"),
+    onNovaRenda: () => setModal("renda"),
+    onEncerrarRenda: encerrarRenda,
+    onExcluirRenda: (id) => aoFalhar(supabase.from("rendas_fixas").delete().eq("id", id)),
+    onNovoParcelamento: () => setModal("parcelamento"),
+    onExcluirParcelamento: (id) => aoFalhar(supabase.from("parcelamentos").delete().eq("id", id)),
+    onExcluir: excluir,
+  };
 
   const abas: { id: Visao; nome: string }[] = [
     { id: "meu", nome: "Meu painel" },
@@ -291,64 +381,53 @@ export default function App() {
       </header>
 
       <main className="mx-auto w-full max-w-5xl flex-1 space-y-6 px-4 py-6 sm:px-6">
-        <nav className="flex w-full gap-1 rounded-full bg-muted p-1 text-sm sm:inline-flex sm:w-auto" aria-label="Visões">
-          {abas.map((a) => (
-            <button
-              key={a.id}
-              type="button"
-              onClick={() => setVisao(a.id)}
-              aria-current={visao === a.id}
-              className={`min-w-0 flex-1 truncate rounded-full px-3 py-2 sm:flex-none sm:px-4 sm:py-1.5 ${visao === a.id ? "bg-primary font-medium text-on-primary" : "text-subtle"}`}
-            >
-              {a.nome}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <nav className="flex w-full gap-1 rounded-full bg-muted p-1 text-sm sm:inline-flex sm:w-auto" aria-label="Visões">
+            {abas.map((a) => (
+              <button
+                key={a.id}
+                type="button"
+                onClick={() => setVisao(a.id)}
+                aria-current={visao === a.id}
+                className={`min-w-0 flex-1 truncate rounded-full px-3 py-2 sm:flex-none sm:px-4 sm:py-1.5 ${visao === a.id ? "bg-primary font-medium text-on-primary" : "text-subtle"}`}
+              >
+                {a.nome}
+              </button>
+            ))}
+          </nav>
+          <div className="flex items-center justify-between gap-2 rounded-full bg-surface px-2 py-1 shadow-sm sm:justify-start">
+            <button type="button" aria-label="Mês anterior" disabled={mes <= mesMin} onClick={() => setMesSel(addMeses(mes, -1))} className="h-8 w-8 rounded-full text-lg">
+              ‹
             </button>
-          ))}
-        </nav>
+            <div className="min-w-36 text-center">
+              <p className="text-sm font-medium capitalize">{rotuloMes(mes)}</p>
+              {mes !== mesAtual && (
+                <button type="button" onClick={() => setMesSel(null)} className="text-xs text-primary">
+                  Voltar ao mês atual
+                </button>
+              )}
+            </div>
+            <button type="button" aria-label="Próximo mês" disabled={mes >= mesMax} onClick={() => setMesSel(addMeses(mes, 1))} className="h-8 w-8 rounded-full text-lg">
+              ›
+            </button>
+          </div>
+        </div>
 
         {erro && <p className="rounded-lg bg-danger/15 px-4 py-3 text-sm text-danger">{erro}</p>}
 
         {visao === "meu" && (
-          <PainelPessoal
-            transacoes={transacoes}
-            pessoa={eu}
-            eu={eu}
-            mes={mes}
-            somenteLeitura={false}
-            nomeDe={nomeDe}
-            onExcluir={excluir}
-            onNovo={() => setModal("lancar")}
-            onComprar={() => setModal("comprar")}
-          />
+          <PainelPessoal transacoes={todas} pessoa={eu} eu={eu} mes={mes} somenteLeitura={false} nomeDe={nomeDe} g={g} />
         )}
         {visao === "par" &&
           (par ? (
-            <PainelPessoal
-              transacoes={transacoes}
-              pessoa={par}
-              eu={eu}
-              mes={mes}
-              somenteLeitura
-              nomeDe={nomeDe}
-              onExcluir={excluir}
-              onNovo={() => {}}
-              onComprar={() => {}}
-            />
+            <PainelPessoal transacoes={todas} pessoa={par} eu={eu} mes={mes} somenteLeitura nomeDe={nomeDe} g={g} />
           ) : (
             <p className="rounded-2xl bg-surface p-5 text-subtle">
               Nenhum par autorizado ainda. Adicione o e-mail dele na tabela <code>autorizados</code> do Supabase.
             </p>
           ))}
         {visao === "casal" && (
-          <PainelCasal
-            transacoes={transacoes}
-            eu={eu}
-            par={par}
-            mes={mes}
-            nomeDe={nomeDe}
-            onExcluir={excluir}
-            onNovo={() => setModal("lancar")}
-            onComprar={() => setModal("comprar")}
-          />
+          <PainelCasal transacoes={todas} eu={eu} par={par} mes={mes} nomeDe={nomeDe} g={g} />
         )}
       </main>
 
@@ -357,7 +436,21 @@ export default function App() {
         <FormLancamento escopoInicial={visao === "casal" ? "casal" : "pessoal"} onSalvar={salvar} onFechar={() => setModal(null)} />
       )}
       {modal === "comprar" && (
-        <FormCompra resumo={resumoVisao} rotuloVisao={visao === "casal" ? "Casal" : "Meu painel"} onFechar={() => setModal(null)} />
+        <FormCompra
+          resumo={resumoVisao}
+          rotuloVisao={visao === "casal" ? "Casal" : "Meu painel"}
+          consultarIA={consultarIA}
+          onFechar={() => setModal(null)}
+        />
+      )}
+      {modal === "renda" && <FormRendaFixa mesAtual={mesAtual} onSalvar={salvarRenda} onFechar={() => setModal(null)} />}
+      {modal === "parcelamento" && (
+        <FormParcelamento
+          mesInicial={mes}
+          escopoInicial={visao === "casal" ? "casal" : "pessoal"}
+          onSalvar={salvarParcelamento}
+          onFechar={() => setModal(null)}
+        />
       )}
     </div>
   );
