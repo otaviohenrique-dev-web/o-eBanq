@@ -115,7 +115,11 @@ export async function POST(req: Request) {
     transacoes: (t.data ?? []).map((x) => ({ ...norm(x), valor: Number(x.valor) })) as Transacao[],
     rendas: (r.data ?? []).map((x) => ({ ...norm(x), valor: Number(x.valor) })) as RendaFixa[],
     parcelamentos: (p.data ?? []).map((x) => ({ ...norm(x), valor_total: Number(x.valor_total) })) as Parcelamento[],
-    adiantadas: (d.data ?? []).map((x) => ({ ...norm(x), valor_pago: Number(x.valor_pago) })) as Adiantada[],
+    adiantadas: (d.data ?? []).map((x) => ({
+      ...norm(x),
+      valor_pago: Number(x.valor_pago),
+      pago_por: x.pago_por ? String(x.pago_por).toLowerCase() : null,
+    })) as Adiantada[],
   });
 
   const corpo = JSON.stringify({

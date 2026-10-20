@@ -3,6 +3,7 @@
 import { useState } from "react";
 import {
   CATEGORIAS,
+  faturaDaCompra,
   hoje,
   parseValor,
   ROTULO,
@@ -12,6 +13,7 @@ import {
   type Escopo,
   type Transacao,
 } from "@/lib/finance";
+import type { NovoParcelamento } from "./FormsPrazo";
 import { SeletorConta } from "./Contas";
 import { CampoValor } from "./CampoValor";
 
@@ -74,11 +76,13 @@ export function FormLancamento({
   escopoInicial,
   contas,
   onSalvar,
+  onSalvarCredito,
   onFechar,
 }: {
   escopoInicial: Escopo;
   contas: Conta[];
   onSalvar: (t: NovaTransacao) => Promise<string | null>;
+  onSalvarCredito: (p: NovoParcelamento) => Promise<string | null>;
   onFechar: () => void;
 }) {
   const [tipo, setTipo] = useState<"entrada" | "saida">("saida");
@@ -88,8 +92,17 @@ export function FormLancamento({
   const [categoria, setCategoria] = useState<Categoria>("necessidade");
   const [data, setData] = useState(hoje);
   const [contaId, setContaId] = useState<string | null>(contas.length === 1 ? contas[0].id : null);
+  const [creditoEscolha, setCreditoEscolha] = useState<boolean | null>(null);
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
+
+  // Cartão com fechamento e vencimento: o gasto pode ir para a fatura (crédito à vista, 1x).
+  const conta = contas.find((c) => c.id === contaId);
+  const fechamento = conta?.dia_fechamento ?? null;
+  const vencimento = conta?.dia_vencimento ?? null;
+  const cartao = Boolean(fechamento && vencimento);
+  const credito = tipo === "saida" && cartao && (creditoEscolha ?? true);
+  const fatura = credito && data ? faturaDaCompra(data, fechamento!, vencimento!) : null;
 
   async function salvar(ev: React.FormEvent) {
     ev.preventDefault();
@@ -97,6 +110,24 @@ export function FormLancamento({
     if (!descricao.trim()) return setErro("Informe uma descrição.");
     if (!(v > 0)) return setErro("Informe um valor maior que zero.");
     if (!data) return setErro("Informe a data.");
+    if (fatura) {
+      setSalvando(true);
+      const falhaCredito = await onSalvarCredito({
+        descricao: descricao.trim(),
+        valor_total: v,
+        parcelas: 1,
+        primeira: fatura.mes,
+        categoria,
+        escopo,
+        conta_id: contaId,
+        data_compra: data,
+        dia_vencimento: vencimento,
+      });
+      setSalvando(false);
+      if (falhaCredito) setErro(falhaCredito);
+      else onFechar();
+      return;
+    }
     setSalvando(true);
     const falha = await onSalvar({
       tipo,
@@ -157,6 +188,19 @@ export function FormLancamento({
           </>
         )}
         <SeletorConta contas={contas} valor={contaId} onChange={setContaId} />
+        {tipo === "saida" && cartao && (
+          <label className="flex cursor-pointer items-start gap-3 rounded-lg bg-primary/10 p-3 text-sm">
+            <input type="checkbox" className="mt-1 h-4 w-4" checked={credito} onChange={(e) => setCreditoEscolha(e.target.checked)} />
+            <span>
+              <strong>💳 Passou no crédito (cai na fatura)</strong>
+              <span className="mt-0.5 block text-xs text-subtle">
+                {fatura
+                  ? `${conta?.nome} fecha dia ${fechamento} e vence dia ${vencimento}. Esta compra (1x) vence em ${fatura.vencimento.split("-").reverse().join("/")}. Para débito ou Pix, desmarque.`
+                  : "Desmarcado: lançado como gasto à vista, na data informada (débito ou Pix)."}
+              </span>
+            </span>
+          </label>
+        )}
         <input className={campo} type="date" value={data} onChange={(e) => setData(e.target.value)} aria-label="Data" />
         {erro && <p className="text-sm text-danger">{erro}</p>}
         <button type="submit" disabled={salvando} className={botaoPrimario}>

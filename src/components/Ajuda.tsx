@@ -102,7 +102,12 @@ const secoes = [
   {
     titulo: "Cartão de crédito e adiantamento",
     texto:
-      "Em Meus bancos, toque em 💳 no cartão e informe o dia do fechamento e o do vencimento. Nas compras a prazo feitas nesse cartão, o app calcula sozinho em qual fatura a primeira parcela cai (compras a partir do dia do fechamento vão para a fatura seguinte) e as demais vencem todo mês no dia do vencimento. Vale também para compra do casal feita no seu cartão: ela segue o seu fechamento, e o acerto entre vocês continua automático. Para pagar antes do vencimento, use ⏩ Adiantar fatura (um mês inteiro) ou ⏩ Adiantar parcelas (em cada compra): as parcelas saem da fatura original e entram na data em que você pagou, com o valor pago (se houve desconto, informe).",
+      "Em Meus bancos, toque em 💳 no cartão e informe o dia do fechamento e o do vencimento. Nas compras a prazo feitas nesse cartão, o app calcula sozinho em qual fatura a primeira parcela cai (compras a partir do dia do fechamento vão para a fatura seguinte) e as demais vencem todo mês no dia do vencimento. Vale também para compra do casal feita no seu cartão: ela segue o seu fechamento, e o acerto entre vocês continua automático. Compra no crédito à vista (1x) também entra: marque \"Passou no crédito\" ao cadastrar um gasto num cartão, ou use + Compra a prazo com 1 parcela.",
+  },
+  {
+    titulo: "Pagar ou adiantar fatura e quem pagou",
+    texto:
+      "Use 💳 Pagar / adiantar fatura (um mês inteiro) ou o botão em cada compra. Informe a data, quem pagou, de qual banco saiu o dinheiro e o valor pago (se o banco deu desconto, informe). Antes do vencimento conta como adiantamento: as parcelas saem da fatura original e entram na data do pagamento. Se quem pagou não é o dono da compra, o acerto entre vocês é calculado sozinho em \"Divisão dos gastos do casal\": compras do casal são rateadas pela renda de cada um, e compras pessoais pagas pela outra pessoa são devidas por inteiro.",
   },
   {
     titulo: "Meses",

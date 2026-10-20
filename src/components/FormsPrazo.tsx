@@ -20,6 +20,7 @@ import {
   type Escopo,
   type Parcelamento,
   type Parecer,
+  type Pessoa,
   type Resumo,
 } from "@/lib/finance";
 import { SeletorConta } from "./Contas";
@@ -227,7 +228,7 @@ export function FormParcelamento({
 
   const v = parseValor(valor);
   const n = Math.floor(Number(parcelas));
-  const previa = v > 0 && n >= 2 ? `${n}x de ${brl(v / n)}` : "";
+  const previa = v > 0 && n >= 1 ? `${n}x de ${brl(v / n)}` : "";
 
   // Cartão com fechamento e vencimento: a fatura da primeira parcela sai da data da compra.
   const conta = contas.find((c) => c.id === contaId);
@@ -240,7 +241,7 @@ export function FormParcelamento({
     ev.preventDefault();
     if (!descricao.trim()) return setErro("Informe o que foi comprado.");
     if (!(v > 0)) return setErro("Informe o valor total.");
-    if (!(n >= 2 && n <= 120)) return setErro("Informe de 2 a 120 parcelas.");
+    if (!(n >= 1 && n <= 120)) return setErro("Informe de 1 a 120 parcelas (1 = no crédito, à vista).");
     if (!dataCompra) return setErro("Informe a data da compra.");
     if (!/^\d{4}-\d{2}$/.test(primeira)) return setErro("Escolha o mês da primeira parcela.");
     setSalvando(true);
@@ -264,11 +265,11 @@ export function FormParcelamento({
     <Modal titulo="Nova compra a prazo" onFechar={onFechar}>
       <form onSubmit={salvar} className="space-y-3">
         <p className="text-xs text-subtle">
-          Informe o valor total e o número de parcelas. O sistema lança uma parcela por mês e soma tudo que vence em cada mês.
+          Informe o valor total e o número de parcelas (use 1 para uma compra no crédito sem parcelar). O sistema lança uma parcela por mês e soma tudo que vence em cada mês.
         </p>
         <input className={campo} placeholder="O que foi comprado? (ex: Geladeira)" value={descricao} onChange={(e) => setDescricao(e.target.value)} />
         <CampoValor rotulo="Valor total" valor={valor} onChange={setValor} />
-        <input className={campo} type="number" min={2} max={120} placeholder="Número de parcelas" value={parcelas} onChange={(e) => setParcelas(e.target.value)} aria-label="Número de parcelas" />
+        <input className={campo} type="number" min={1} max={120} placeholder="Número de parcelas (1 = no crédito, à vista)" value={parcelas} onChange={(e) => setParcelas(e.target.value)} aria-label="Número de parcelas" />
         {previa && <p className="text-sm font-medium">{previa}</p>}
         <select className={campo} value={escopo} onChange={(e) => setEscopo(e.target.value as Escopo)} aria-label="De quem">
           <option value="pessoal">Compra pessoal</option>
@@ -317,8 +318,8 @@ export function FormParcelamento({
 export type LinhaAdiantamento = { parcelamento_id: string; indice: number; valor: number };
 
 /**
- * Adiantar dívidas: paga antes do vencimento uma fatura inteira (um mês) ou as próximas parcelas de uma compra.
- * As parcelas saem da fatura original e passam a valer na data em que foram pagas.
+ * Pagar ou adiantar uma fatura inteira (um mês) ou as próximas parcelas de uma compra, registrando
+ * quem pagou. Antes do vencimento conta como adiantamento. As parcelas passam a valer na data do pagamento.
  */
 export function FormAdiantar({
   modo,
@@ -327,6 +328,9 @@ export function FormAdiantar({
   adiantadas,
   mesPadrao,
   compraId,
+  eu,
+  pessoas,
+  nomeDe,
   onSalvar,
   onFechar,
 }: {
@@ -336,7 +340,10 @@ export function FormAdiantar({
   adiantadas: Adiantada[];
   mesPadrao: string;
   compraId?: string;
-  onSalvar: (linhas: LinhaAdiantamento[], pagoEm: string, valorPago: number) => Promise<string | null>;
+  eu: Pessoa;
+  pessoas: Pessoa[];
+  nomeDe: (email: string) => string;
+  onSalvar: (linhas: LinhaAdiantamento[], pagoEm: string, valorPago: number, pagoPor: string, pagoComConta: string | null) => Promise<string | null>;
   onFechar: () => void;
 }) {
   const hojeStr = hoje();
@@ -345,39 +352,50 @@ export function FormAdiantar({
   const [qtd, setQtd] = useState("1");
   const [pagoEm, setPagoEm] = useState(hojeStr);
   const [valorPago, setValorPago] = useState("");
+  const [pagoPor, setPagoPor] = useState(eu.email);
+  const [pagoComConta, setPagoComConta] = useState<string | null>(null);
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
 
-  // Só dá para adiantar o que ainda não venceu.
-  const aVencer = (p: Parcelamento) => pendentes(p, hojeStr.slice(0, 7), adiantadas).filter((k) => vencimentoDaParcela(p, k) >= hojeStr);
+  const pendentesDe = (p: Parcelamento) => pendentes(p, modo === "compra" ? hojeStr.slice(0, 7) : mesAlvo, adiantadas);
   const linhaDe = (p: Parcelamento, k: number) => ({
     parcelamento_id: p.id,
     indice: k,
     valor: valorDaParcela(p, k),
-    descricao: `${p.descricao} (${k + 1}/${p.parcelas})`,
+    descricao: p.parcelas === 1 ? p.descricao : `${p.descricao} (${k + 1}/${p.parcelas})`,
     vence: vencimentoDaParcela(p, k),
+    escopo: p.escopo,
+    dono: p.autor_email,
   });
 
   const compra = modo === "compra" ? parcelamentos.find((p) => p.id === compraId) : undefined;
-  const disponiveis = compra ? aVencer(compra).length : 0;
+  const disponiveis = compra ? pendentesDe(compra).length : 0;
   const linhas =
     modo === "compra"
       ? compra
-        ? aVencer(compra)
+        ? pendentesDe(compra)
             .slice(0, Math.max(1, Math.floor(Number(qtd)) || 1))
             .map((k) => linhaDe(compra, k))
         : []
       : parcelamentos
           .filter((p) => contaFiltro === null || p.conta_id === contaFiltro)
-          .flatMap((p) => aVencer(p).filter((k) => addMeses(p.primeira, k) === mesAlvo).map((k) => linhaDe(p, k)));
+          .flatMap((p) => pendentesDe(p).filter((k) => addMeses(p.primeira, k) === mesAlvo).map((k) => linhaDe(p, k)));
 
   const totalOriginal = linhas.reduce((acc, l) => acc + l.valor, 0);
   const pagoTotal = valorPago ? parseValor(valorPago) : totalOriginal;
   const diferenca = totalOriginal - pagoTotal;
+  const contasComCompras = contas.filter((c) => parcelamentos.some((p) => p.conta_id === c.id));
+  const contasDoPagador = contas.filter((c) => c.autor_email === pagoPor);
+
+  // Prévia do repasse: compras pessoais de outra pessoa pagas por quem está pagando
+  const fator = totalOriginal > 0 ? pagoTotal / totalOriginal : 1;
+  const pessoaisDeOutro = linhas.filter((l) => l.escopo === "pessoal" && l.dono !== pagoPor);
+  const repasse = pessoaisDeOutro.reduce((acc, l) => acc + l.valor, 0) * fator;
+  const temCasal = linhas.some((l) => l.escopo === "casal");
 
   async function salvar(ev: React.FormEvent) {
     ev.preventDefault();
-    if (linhas.length === 0) return setErro("Não há parcelas a vencer para adiantar nesta escolha.");
+    if (linhas.length === 0) return setErro("Não há parcelas pendentes nesta escolha.");
     if (!pagoEm) return setErro("Informe a data do pagamento.");
     if (!(pagoTotal >= 0)) return setErro("Informe o valor pago.");
     setSalvando(true);
@@ -385,46 +403,43 @@ export function FormAdiantar({
       linhas.map(({ parcelamento_id, indice, valor }) => ({ parcelamento_id, indice, valor })),
       pagoEm,
       pagoTotal,
+      pagoPor,
+      pagoComConta,
     );
     setSalvando(false);
     if (falha) setErro(falha);
     else onFechar();
   }
 
+  const chip = (ativo: boolean) =>
+    `inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm ${ativo ? "border-strong bg-strong text-background" : "border-line"}`;
+
   return (
-    <Modal titulo={modo === "fatura" ? "Adiantar fatura de um mês" : `Adiantar parcelas · ${compra?.descricao ?? ""}`} onFechar={onFechar}>
+    <Modal titulo={modo === "fatura" ? "Pagar ou adiantar fatura" : `Pagar ou adiantar parcelas · ${compra?.descricao ?? ""}`} onFechar={onFechar}>
       <form onSubmit={salvar} className="space-y-3">
         <p className="text-xs text-subtle">
-          Adiantar tira estas parcelas da fatura original e lança o pagamento na data que você informar. Se o banco deu desconto de
-          juros, informe o valor realmente pago.
+          Registre que a fatura (ou as parcelas) foi paga e por quem. Antes do vencimento conta como adiantamento. As parcelas passam a
+          valer na data do pagamento, e se o banco deu desconto, informe o valor realmente pago.
         </p>
 
         {modo === "fatura" && (
           <>
             <label className="block text-sm text-subtle">
-              Mês da fatura que será adiantada
+              Mês da fatura
               <input className={`${campo} mt-1`} type="month" value={mesAlvo} onChange={(e) => setMesAlvo(e.target.value)} />
             </label>
-            {contas.length > 0 && (
+            {contasComCompras.length > 0 && (
               <div>
-                <p className="mb-1.5 text-sm text-subtle">Cartão / banco</p>
+                <p className="mb-1.5 text-sm text-subtle">Cartão da fatura</p>
                 <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setContaFiltro(null)}
-                    className={`rounded-full border px-3 py-1.5 text-sm ${contaFiltro === null ? "border-strong bg-strong text-background" : "border-line"}`}
-                  >
+                  <button type="button" onClick={() => setContaFiltro(null)} className={chip(contaFiltro === null)}>
                     Todos
                   </button>
-                  {contas.map((c) => (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => setContaFiltro(c.id)}
-                      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm ${contaFiltro === c.id ? "border-strong bg-strong text-background" : "border-line"}`}
-                    >
+                  {contasComCompras.map((c) => (
+                    <button key={c.id} type="button" onClick={() => setContaFiltro(c.id)} className={chip(contaFiltro === c.id)}>
                       <span aria-hidden className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: c.cor }} />
                       {c.nome}
+                      {c.autor_email !== eu.email ? ` (${nomeDe(c.autor_email)})` : ""}
                     </button>
                   ))}
                 </div>
@@ -435,7 +450,7 @@ export function FormAdiantar({
 
         {modo === "compra" && disponiveis > 0 && (
           <div>
-            <p className="mb-1.5 text-sm text-subtle">Quantas parcelas adiantar? (a vencer: {disponiveis})</p>
+            <p className="mb-1.5 text-sm text-subtle">Quantas parcelas pagar agora? (pendentes: {disponiveis})</p>
             <div className="flex flex-wrap items-center gap-2">
               <input
                 className="w-24 rounded-lg border border-line bg-background px-3 py-2"
@@ -455,7 +470,7 @@ export function FormAdiantar({
 
         {linhas.length === 0 ? (
           <p className="rounded-lg bg-muted p-3 text-sm text-subtle">
-            {modo === "fatura" ? "Nenhuma parcela a vencer neste mês (ou já foram adiantadas)." : "Esta compra não tem parcelas a vencer para adiantar."}
+            {modo === "fatura" ? "Nenhuma parcela pendente neste mês (ou já foram pagas)." : "Esta compra não tem parcelas pendentes."}
           </p>
         ) : (
           <ul className="space-y-1 rounded-lg bg-muted p-3 text-sm">
@@ -463,7 +478,7 @@ export function FormAdiantar({
               <li key={`${l.parcelamento_id}-${l.indice}`} className="flex flex-wrap justify-between gap-x-3">
                 <span className="min-w-0 break-words">{l.descricao}</span>
                 <span className="text-subtle">
-                  {brl(l.valor)} · venceria {dataBR(l.vence)}
+                  {brl(l.valor)} · vence {dataBR(l.vence)}
                 </span>
               </li>
             ))}
@@ -475,9 +490,32 @@ export function FormAdiantar({
         )}
 
         <label className="block text-sm text-subtle">
-          Data em que você pagou
+          Data em que foi pago
           <input className={`${campo} mt-1`} type="date" value={pagoEm} onChange={(e) => setPagoEm(e.target.value)} />
         </label>
+
+        <div>
+          <p className="mb-1.5 text-sm text-subtle">Quem pagou?</p>
+          <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Quem pagou">
+            {pessoas.map((pe) => (
+              <button
+                key={pe.email}
+                type="button"
+                role="radio"
+                aria-checked={pagoPor === pe.email}
+                onClick={() => {
+                  setPagoPor(pe.email);
+                  setPagoComConta(null);
+                }}
+                className={chip(pagoPor === pe.email)}
+              >
+                👤 {pe.email === eu.email ? "Eu" : pe.nome}
+              </button>
+            ))}
+          </div>
+        </div>
+        <SeletorConta contas={contasDoPagador} valor={pagoComConta} onChange={setPagoComConta} />
+
         <div>
           <p className="mb-1.5 text-sm text-subtle">Valor pago (deixe em branco se pagou o total)</p>
           <CampoValor rotulo="Valor pago" valor={valorPago} onChange={setValorPago} placeholder={totalOriginal > 0 ? totalOriginal.toFixed(2).replace(".", ",") : "0,00"} />
@@ -487,9 +525,22 @@ export function FormAdiantar({
             </p>
           )}
         </div>
+
+        {linhas.length > 0 && (repasse > 0.005 || temCasal) && (
+          <div className="space-y-1 rounded-lg bg-primary/10 p-3 text-xs">
+            {repasse > 0.005 && (
+              <p>
+                🔁 Como <strong>{nomeDe(pagoPor)}</strong> paga compras pessoais de <strong>{nomeDe(pessoaisDeOutro[0].dono)}</strong>,{" "}
+                {nomeDe(pessoaisDeOutro[0].dono)} deve repassar <strong>{brl(repasse)}</strong>.
+              </p>
+            )}
+            {temCasal && <p>👥 Compras do casal: o rateio pela renda de cada um e o repasse aparecem em &ldquo;Divisão dos gastos do casal&rdquo;.</p>}
+          </div>
+        )}
+
         {erro && <p className="text-sm text-danger">{erro}</p>}
         <button type="submit" disabled={salvando || linhas.length === 0} className={botaoPrimario}>
-          {salvando ? "Salvando..." : "Registrar adiantamento"}
+          {salvando ? "Salvando..." : "Registrar pagamento"}
         </button>
       </form>
     </Modal>

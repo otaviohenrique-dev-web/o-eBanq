@@ -134,7 +134,11 @@ async function buscar(): Promise<{ erro: string } | Carga> {
     rendas: (r.data ?? []).map((x) => ({ ...minusculo(x), valor: Number(x.valor) })),
     parcelamentos: (p.data ?? []).map((x) => ({ ...minusculo(x), valor_total: Number(x.valor_total) })),
     contas: (c.data ?? []).map((x) => ({ ...minusculo(x), saldo_inicial: Number(x.saldo_inicial) })),
-    adiantadas: (d.data ?? []).map((x) => ({ ...minusculo(x), valor_pago: Number(x.valor_pago) })),
+    adiantadas: (d.data ?? []).map((x) => ({
+      ...minusculo(x),
+      valor_pago: Number(x.valor_pago),
+      pago_por: x.pago_por ? String(x.pago_por).toLowerCase() : null,
+    })),
   };
 }
 
@@ -236,7 +240,7 @@ export default function App() {
     );
 
   // Registra o pagamento antecipado: as parcelas saem da fatura original e entram na data paga.
-  const salvarAdiantamento = (linhas: LinhaAdiantamento[], pagoEm: string, valorPago: number) => {
+  const salvarAdiantamento = (linhas: LinhaAdiantamento[], pagoEm: string, valorPago: number, pagoPor: string, pagoComConta: string | null) => {
     const valores = distribuirPagamento(linhas.map((l) => l.valor), valorPago);
     return gravar(
       supabase.from("parcelas_adiantadas").insert(
@@ -245,6 +249,8 @@ export default function App() {
           indice: l.indice,
           pago_em: pagoEm,
           valor_pago: valores[i],
+          pago_por: pagoPor,
+          pago_com_conta_id: pagoComConta,
           autor_email: email,
         })),
       ),
@@ -252,8 +258,8 @@ export default function App() {
   };
 
   function desfazerAdiantamento(parcelamentoId: string) {
-    if (!window.confirm("Desfazer os adiantamentos desta compra? As parcelas voltam para as datas originais.")) return;
-    return aoFalhar(supabase.from("parcelas_adiantadas").delete().eq("parcelamento_id", parcelamentoId));
+    if (!window.confirm("Desfazer os pagamentos que você registrou desta compra? As parcelas voltam para as datas originais.")) return;
+    return aoFalhar(supabase.from("parcelas_adiantadas").delete().eq("parcelamento_id", parcelamentoId).eq("autor_email", email));
   }
 
   const definirCartao = (id: string, fechamento: number | null, vencimento: number | null) =>
@@ -526,6 +532,7 @@ export default function App() {
           escopoInicial={visao === "casal" ? "casal" : "pessoal"}
           contas={minhasContas}
           onSalvar={salvar}
+          onSalvarCredito={salvarParcelamento}
           onFechar={() => setModal(null)}
         />
       )}
@@ -541,9 +548,12 @@ export default function App() {
         <FormAdiantar
           modo={alvoAdiantar ? "compra" : "fatura"}
           compraId={alvoAdiantar ?? undefined}
-          parcelamentos={parcelamentos.filter((p) => p.autor_email === email)}
-          contas={minhasContas}
+          parcelamentos={parcelamentos}
+          contas={contas}
           adiantadas={adiantadas}
+          eu={eu}
+          pessoas={pessoas}
+          nomeDe={nomeDe}
           mesPadrao={addMeses(mes, 1)}
           onSalvar={salvarAdiantamento}
           onFechar={() => setModal(null)}

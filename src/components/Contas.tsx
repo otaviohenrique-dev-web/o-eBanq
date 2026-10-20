@@ -24,8 +24,9 @@ const estiloTipo = {
   fixa: "bg-primary/15 text-foreground",
   parcela: "bg-warning/20 text-foreground",
   adiantada: "bg-primary/15 text-foreground",
+  paga: "bg-primary/15 text-foreground",
 };
-const rotuloTipo = { pessoal: "👤 Pessoal", casal: "👥 Casal", fixa: "🔁 Renda fixa", parcela: "🧾 Parcela", adiantada: "⏩ Adiantada" };
+const rotuloTipo = { pessoal: "👤 Pessoal", casal: "👥 Casal", fixa: "🔁 Renda fixa", parcela: "🧾 Parcela", adiantada: "⏩ Adiantada", paga: "✅ Paga" };
 
 /** Etiqueta que deixa claro se o lançamento é pessoal, do casal, renda fixa ou parcela. */
 export function ChipTipo({ tipo }: { tipo: keyof typeof estiloTipo }) {

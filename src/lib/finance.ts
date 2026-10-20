@@ -16,6 +16,10 @@ export type Transacao = {
   conta_id?: string | null;
   /** Parcela paga antes do vencimento (já está na data em que foi paga). */
   adiantada?: boolean;
+  /** Parcela com pagamento registrado (no vencimento ou antes). */
+  paga?: boolean;
+  /** E-mail de quem pagou; se vazio, quem pagou foi o autor. */
+  pago_por?: string | null;
 };
 
 export type RendaFixa = {
@@ -52,6 +56,10 @@ export type Adiantada = {
   indice: number;
   pago_em: string;
   valor_pago: number;
+  /** Quem pagou (e-mail); se vazio, foi o dono da compra. */
+  pago_por?: string | null;
+  /** Banco de onde saiu o dinheiro. */
+  pago_com_conta_id?: string | null;
 };
 
 /** Banco ou conta de uma pessoa: serve de "tag" para rastrear onde o dinheiro está. */
@@ -228,19 +236,24 @@ export function expandir(
   for (const p of parcelamentos) {
     for (let k = 0; k < p.parcelas; k++) {
       const ad = feitas.get(`${p.id}-${k}`);
+      const pagador = ad ? (ad.pago_por ?? p.autor_email) : p.autor_email;
+      // Se outra pessoa pagou e não informou o banco, não dá para saber de onde saiu: fica sem banco.
+      const conta = ad ? (ad.pago_com_conta_id ?? (pagador === p.autor_email ? (p.conta_id ?? null) : null)) : (p.conta_id ?? null);
       geradas.push({
         id: `parcela-${p.id}-${k}`,
         autor_email: p.autor_email,
         escopo: p.escopo,
         tipo: "saida",
-        descricao: `${p.descricao} (${k + 1}/${p.parcelas})`,
+        descricao: p.parcelas === 1 ? p.descricao : `${p.descricao} (${k + 1}/${p.parcelas})`,
         valor: ad ? ad.valor_pago : valorDaParcela(p, k),
         categoria: p.categoria,
         data: ad ? ad.pago_em : vencimentoDaParcela(p, k),
         origem: "parcela",
         refId: p.id,
-        conta_id: p.conta_id ?? null,
-        adiantada: Boolean(ad),
+        conta_id: conta,
+        adiantada: Boolean(ad && ad.pago_em < vencimentoDaParcela(p, k)),
+        paga: Boolean(ad),
+        pago_por: ad ? pagador : null,
       });
     }
   }
@@ -330,22 +343,32 @@ export function resumirMes(todas: Transacao[], mes: string, filtro: (t: Transaca
 export type Acerto = { de: Pessoa; para: Pessoa; valor: number } | null;
 
 /**
- * Divide os gastos do casal proporcionalmente à renda de cada um no mês
- * e diz quem deve a quem para acertar.
+ * Acerto entre o casal no mês. Gastos do casal são rateados pela renda de cada um; gastos pessoais
+ * pagos por outra pessoa são devidos por inteiro ao dono. Quem pagou é `pago_por` (ou o autor).
  */
 export function dividirGastos(
   doMes: Transacao[],
   pessoas: [Pessoa, Pessoa],
-): { totalCasal: number; partes: { pessoa: Pessoa; renda: number; devido: number; pago: number }[]; acerto: Acerto } {
-  const gastosCasal = doMes.filter((t) => t.tipo === "saida" && t.escopo === "casal");
-  const totalCasal = soma(gastosCasal);
+): {
+  totalCasal: number;
+  pessoaisPagosPorOutro: number;
+  partes: { pessoa: Pessoa; renda: number; devido: number; pago: number }[];
+  acerto: Acerto;
+} {
+  const quemPagou = (t: Transacao) => t.pago_por ?? t.autor_email;
+  const saidas = doMes.filter((t) => t.tipo === "saida");
+  const casais = saidas.filter((t) => t.escopo === "casal");
+  const pessoaisDeOutro = saidas.filter((t) => t.escopo === "pessoal" && quemPagou(t) !== t.autor_email);
+  const totalCasal = soma(casais);
   const rendas = pessoas.map((p) => soma(doMes.filter((t) => t.tipo === "entrada" && t.autor_email === p.email)));
   const rendaTotal = rendas[0] + rendas[1];
   const partes = pessoas.map((pessoa, i) => ({
     pessoa,
     renda: rendas[i],
-    devido: rendaTotal > 0 ? (totalCasal * rendas[i]) / rendaTotal : totalCasal / 2,
-    pago: soma(gastosCasal.filter((t) => t.autor_email === pessoa.email)),
+    devido:
+      (rendaTotal > 0 ? (totalCasal * rendas[i]) / rendaTotal : totalCasal / 2) +
+      soma(pessoaisDeOutro.filter((t) => t.autor_email === pessoa.email)),
+    pago: soma(casais.filter((t) => quemPagou(t) === pessoa.email)) + soma(pessoaisDeOutro.filter((t) => quemPagou(t) === pessoa.email)),
   }));
   const dif0 = partes[0].devido - partes[0].pago; // positivo: a pessoa 0 deve
   const valor = Math.abs(dif0);
@@ -355,7 +378,7 @@ export function dividirGastos(
       : dif0 > 0
         ? { de: pessoas[0], para: pessoas[1], valor }
         : { de: pessoas[1], para: pessoas[0], valor };
-  return { totalCasal, partes, acerto };
+  return { totalCasal, pessoaisPagosPorOutro: soma(pessoaisDeOutro), partes, acerto };
 }
 
 export type Parecer = { nivel: "ok" | "atencao" | "nao"; texto: string };

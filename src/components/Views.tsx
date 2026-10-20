@@ -76,7 +76,7 @@ function faturasDosCartoes(contas: Conta[], parcelasTs: Transacao[], hojeStr: st
     if (!c.dia_vencimento) continue;
     const vence = proximoVencimento(hojeStr, c.dia_vencimento);
     const total = parcelasTs
-      .filter((t) => t.conta_id === c.id && !t.adiantada && t.data.startsWith(vence.slice(0, 7)))
+      .filter((t) => t.conta_id === c.id && !t.paga && t.data.startsWith(vence.slice(0, 7)))
       .reduce((acc, t) => acc + t.valor, 0);
     mapa.set(c.id, { vence, total });
   }
@@ -269,7 +269,7 @@ function ParcelasPanel({
           <Dica>
             <p>Cadastre o valor total e o número de parcelas: o sistema lança uma parcela por mês e soma tudo que vence em cada mês.</p>
             <p>O ideal é que as parcelas somem até 20% da renda.</p>
-            <p>Para pagar antes do vencimento, use &ldquo;Adiantar fatura&rdquo; (um mês inteiro) ou &ldquo;Adiantar parcelas&rdquo; em cada compra. As parcelas saem da fatura original e entram na data em que você pagou.</p>
+            <p>Para pagar ou adiantar, use &ldquo;Pagar / adiantar fatura&rdquo; (um mês inteiro) ou o botão em cada compra. Informe quem pagou: se não foi o dono da compra, o acerto entre vocês é calculado sozinho. Antes do vencimento conta como adiantamento, e as parcelas entram na data do pagamento.</p>
           </Dica>
           {!somenteLeitura && (
             <>
@@ -277,7 +277,7 @@ function ParcelasPanel({
                 + Compra a prazo
               </button>
               <button type="button" onClick={g.onAdiantarFatura} className={botaoPequeno}>
-                ⏩ Adiantar fatura
+                💳 Pagar / adiantar fatura
               </button>
             </>
           )}
@@ -370,7 +370,6 @@ function ParcelasPanel({
           const restantes = pend.length;
           const saldoRestante = pend.reduce((acc, k) => acc + valorDaParcela(p, k), 0);
           const ads = g.adiantadas.filter((a) => a.parcelamento_id === p.id);
-          const dono = !somenteLeitura && p.autor_email === meuEmail;
           const situacao =
             restantes === 0 ? "quitada" : pos < 1 ? `começa em ${rotuloMes(p.primeira)}` : pos > p.parcelas ? "quitada" : `parcela ${pos}/${p.parcelas} neste mês`;
           const pct = Math.min(100, Math.max(0, ((p.parcelas - restantes) / p.parcelas) * 100));
@@ -388,19 +387,23 @@ function ParcelasPanel({
                   {restantes > 0 && <p className="text-xs text-subtle">Falta pagar {brl(saldoRestante)} ({restantes} parcelas, contando este mês)</p>}
                   {ads.length > 0 && (
                     <p className="mt-1 text-xs">
-                      <ChipTipo tipo="adiantada" /> <span className="text-subtle">{ads.length} {ads.length === 1 ? "parcela adiantada" : "parcelas adiantadas"}</span>
+                      <ChipTipo tipo="paga" />{" "}
+                      <span className="text-subtle">
+                        {ads.length} {ads.length === 1 ? "parcela paga" : "parcelas pagas"} · por{" "}
+                        {[...new Set(ads.map((a) => nomeDe(a.pago_por ?? p.autor_email)))].join(", ")}
+                      </span>
                     </p>
                   )}
-                  {dono && (restantes > 0 || ads.length > 0) && (
+                  {!somenteLeitura && (restantes > 0 || ads.some((a) => a.autor_email === meuEmail)) && (
                     <div className="mt-2 flex flex-wrap gap-2">
                       {restantes > 0 && (
                         <button type="button" onClick={() => g.onAdiantarCompra(p.id)} className={botaoPequeno}>
-                          ⏩ Adiantar parcelas
+                          💳 Pagar / adiantar parcelas
                         </button>
                       )}
-                      {ads.length > 0 && (
+                      {ads.some((a) => a.autor_email === meuEmail) && (
                         <button type="button" onClick={() => g.onDesfazerAdiantamento(p.id)} className={botaoPequeno}>
-                          Desfazer adiantamentos
+                          Desfazer pagamentos
                         </button>
                       )}
                     </div>
@@ -496,11 +499,12 @@ function Movimentos({
               <p className="text-xs text-subtle">
                 {t.data.split("-").reverse().join("/")} · {nomeDe(t.autor_email)}
                 {t.tipo === "saida" && ` · ${ROTULO[t.categoria]}`}
+                {t.paga && t.pago_por ? ` · pago por ${nomeDe(t.pago_por)}` : ""}
               </p>
               <div className="mt-1 flex flex-wrap gap-1.5">
                 <ChipTipo tipo={t.escopo} />
                 {t.origem && <ChipTipo tipo={t.origem} />}
-                {t.adiantada && <ChipTipo tipo="adiantada" />}
+                {t.paga && <ChipTipo tipo={t.adiantada ? "adiantada" : "paga"} />}
                 <ChipConta conta={contas.find((c) => c.id === t.conta_id)} />
               </div>
             </div>
@@ -702,6 +706,9 @@ export function PainelCasal({
               <p className="text-subtle">
                 Gastos do casal no mês: <strong className="text-foreground">{brl(divisao.totalCasal)}</strong>, divididos pela proporção da renda de cada um.
               </p>
+              {divisao.pessoaisPagosPorOutro > 0 && (
+                <p className="text-subtle">Inclui {brl(divisao.pessoaisPagosPorOutro)} de compras pessoais pagas pela outra pessoa.</p>
+              )}
               {divisao.partes.map((p) => (
                 <div key={p.pessoa.email} className="flex flex-wrap justify-between gap-x-3">
                   <span>{p.pessoa.nome}</span>
