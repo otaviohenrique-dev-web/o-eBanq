@@ -106,9 +106,15 @@ export async function POST(req: Request) {
   }
 
   if (!resposta.ok) {
-    console.error("Gemini", resposta.status, (await resposta.text()).slice(0, 300));
+    const detalhe = await resposta.text();
+    console.error("Gemini", resposta.status, detalhe.slice(0, 300));
     if (resposta.status === 429) return erro("O limite gratuito da IA foi atingido. Tente em alguns minutos.", 429);
-    return erro("A IA não respondeu (confira a chave e o modelo configurados).", 502);
+    // A mensagem vem do Google e não contém a chave; ajuda a achar chave ou modelo errados.
+    let motivo = "";
+    try {
+      motivo = String(JSON.parse(detalhe)?.error?.message ?? "").slice(0, 160);
+    } catch {}
+    return erro(`A IA não respondeu (HTTP ${resposta.status}${motivo ? `: ${motivo}` : ""}). Modelo: ${modelo}.`, 502);
   }
   const json = await resposta.json();
   const texto: string = (json.candidates?.[0]?.content?.parts ?? [])
