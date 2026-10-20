@@ -13,9 +13,12 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "o&eBanq",
+  title: "o-ebanq",
   description: "Contabilidade e inteligência financeira para casais",
 };
+
+// Aplica o tema salvo (ou o do sistema) antes da primeira pintura, evitando o "flash" claro.
+const temaInicial = `try{var t=localStorage.getItem("tema");if(!t)t=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";document.documentElement.dataset.theme=t}catch(e){}`;
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
@@ -24,6 +27,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: temaInicial }} />
+      </head>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );

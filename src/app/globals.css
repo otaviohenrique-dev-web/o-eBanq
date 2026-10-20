@@ -1,15 +1,37 @@
 @import "tailwindcss";
 
 :root {
+  color-scheme: light;
   --background: #f8fafc;
   --foreground: #0f172a;
   --surface: #ffffff;
   --muted: #f1f5f9;
-  --navy: #0f172a;
-  --navy-soft: #1e293b;
+  --line: #e2e8f0;
+  --subtle: #64748b;
+  --header: #0f172a;
+  --strong: #0f172a;
+  --on-primary: #0f172a;
   --primary: #10b981;
   --danger: #ef4444;
   --warning: #f59e0b;
+  --serie-1: #2a78d6;
+  --serie-2: #eb6834;
+  --serie-3: #1baf7a;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --background: #0b1120;
+  --foreground: #e2e8f0;
+  --surface: #151e32;
+  --muted: #1e293b;
+  --line: #2b3750;
+  --subtle: #94a3b8;
+  --header: #0a0f1d;
+  --strong: #e2e8f0;
+  --serie-1: #3987e5;
+  --serie-2: #d95926;
+  --serie-3: #199e70;
 }
 
 @theme inline {
@@ -17,11 +39,17 @@
   --color-foreground: var(--foreground);
   --color-surface: var(--surface);
   --color-muted: var(--muted);
-  --color-navy: var(--navy);
-  --color-navy-soft: var(--navy-soft);
+  --color-line: var(--line);
+  --color-subtle: var(--subtle);
+  --color-header: var(--header);
+  --color-strong: var(--strong);
+  --color-on-primary: var(--on-primary);
   --color-primary: var(--primary);
   --color-danger: var(--danger);
   --color-warning: var(--warning);
+  --color-serie-1: var(--serie-1);
+  --color-serie-2: var(--serie-2);
+  --color-serie-3: var(--serie-3);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
@@ -30,4 +58,65 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+/* Animação básica de todos os botões: sobe ao passar o mouse, afunda ao clicar */
+button {
+  cursor: pointer;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease,
+    filter 0.15s ease,
+    background-color 0.2s ease,
+    color 0.2s ease,
+    border-color 0.2s ease;
+}
+button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 14px rgb(0 0 0 / 0.18);
+  filter: brightness(1.08);
+}
+button:active:not(:disabled) {
+  transform: translateY(0) scale(0.95);
+  box-shadow: none;
+  filter: brightness(0.95);
+}
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+@keyframes aparecer {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animar-entrada {
+  animation: aparecer 0.25s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button,
+  body {
+    transition: none;
+  }
+  button:hover:not(:disabled),
+  button:active:not(:disabled) {
+    transform: none;
+  }
+  .animar-entrada {
+    animation: none;
+  }
 }

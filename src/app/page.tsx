@@ -1,10 +1,10 @@
 import { Suspense } from "react";
-import Painel from "@/components/Painel";
+import App from "@/components/App";
 
 export default function Home() {
   return (
-    <Suspense fallback={<p className="p-6 text-slate-500">Carregando...</p>}>
-      <Painel />
+    <Suspense fallback={<p className="p-6 text-subtle">Carregando...</p>}>
+      <App />
     </Suspense>
   );
 }
