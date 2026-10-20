@@ -15,7 +15,7 @@ import {
 } from "@/lib/finance";
 import { SeletorConta } from "./Contas";
 import { CampoValor } from "./CampoValor";
-import { campo, Modal } from "./Forms";
+import { campo, Modal, SugestaoCategoria } from "./Forms";
 
 const botaoPrimario = "w-full rounded-full bg-primary px-6 py-3 font-medium text-on-primary";
 
@@ -254,6 +254,10 @@ export function FormParcelamento({
             </option>
           ))}
         </select>
+        <SugestaoCategoria descricao={descricao} categoria={categoria} onEscolher={setCategoria} />
+        <p className="text-xs text-subtle">
+          As parcelas entram como gasto em cada mês em que vencem, na categoria escolhida, e já contam nos limites 50/30/20.
+        </p>
         <SeletorConta contas={contas} valor={contaId} onChange={setContaId} />
         {erro && <p className="text-sm text-danger">{erro}</p>}
         <button type="submit" disabled={salvando} className={botaoPrimario}>

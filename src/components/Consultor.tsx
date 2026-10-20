@@ -7,8 +7,8 @@ type Escopo = "pessoal" | "casal";
 type Msg = { de: "voce" | "ia" | "erro"; texto: string };
 
 const SUGESTOES: Record<Escopo, string[]> = {
-  pessoal: ["Onde posso economizar este mês?", "Estou gastando demais em alguma categoria?", "Como organizar minha renda que varia?"],
-  casal: ["Estamos dividindo bem os gastos?", "Dá para guardar mais como casal?", "Como reduzir nossas parcelas?"],
+  pessoal: ["Onde posso economizar este mês?", "Qual a melhor estratégia para pagar minhas parcelas?", "Como organizar minha renda que varia?"],
+  casal: ["Estamos dividindo bem os gastos?", "Qual a melhor estratégia para pagar nossas parcelas?", "Dá para guardar mais como casal?"],
 };
 
 /**

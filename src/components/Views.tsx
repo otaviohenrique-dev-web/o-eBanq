@@ -8,6 +8,7 @@ import {
   difMeses,
   dividirGastos,
   noMes,
+  planejarParcelas,
   REGRA,
   resumir,
   resumirMes,
@@ -46,6 +47,17 @@ export type Gestao = {
   onExcluirParcelamento: (id: string) => void;
   onExcluir: (id: string) => void;
 };
+
+const abrevMes = (mes: string) => {
+  const [a, m] = mes.split("-").map(Number);
+  return new Date(a, m - 1, 1).toLocaleDateString("pt-BR", { month: "short" }).replace(".", "");
+};
+
+const proximaFatura = (ts: Transacao[], mes: string) =>
+  noMes(
+    ts.filter((t) => t.origem === "parcela"),
+    addMeses(mes, 1),
+  ).reduce((acc, t) => acc + t.valor, 0);
 
 function Cartoes({ itens }: { itens: { titulo: string; valor: number; cor?: string; dica?: string }[] }) {
   return (
@@ -205,6 +217,7 @@ function ParcelasPanel({
   meuEmail,
   nomeDe,
   somenteLeitura,
+  mostrarDono,
   g,
 }: {
   parcelamentos: Parcelamento[];
@@ -214,6 +227,7 @@ function ParcelasPanel({
   meuEmail: string;
   nomeDe: (email: string) => string;
   somenteLeitura: boolean;
+  mostrarDono: boolean;
   g: Gestao;
 }) {
   const proximos = Array.from({ length: 6 }, (_, i) => {
@@ -221,6 +235,8 @@ function ParcelasPanel({
     return { mes: m, total: parcelasTs.filter((t) => t.data.startsWith(m)).reduce((s, t) => s + t.valor, 0) };
   });
   const percentual = r.base > 0 ? Math.round((r.parcelas / r.base) * 100) : 0;
+  const plano = planejarParcelas(parcelamentos, parcelasTs, mes, r.base);
+  const totalPor = (esc: string) => plano.itensProxima.filter((i) => i.escopo === esc).reduce((acc, i) => acc + i.valor, 0);
   return (
     <section className={painel}>
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -244,6 +260,71 @@ function ParcelasPanel({
           <span className={percentual > 20 ? "text-danger" : "text-subtle"}> · {percentual}% da renda{percentual > 20 ? " (acima do ideal de 20%)" : ""}</span>
         )}
       </p>
+
+      <div className="mt-4 rounded-xl bg-muted p-4">
+        <p className="text-sm text-subtle">Próxima fatura · {rotuloMes(plano.mesFatura)}</p>
+        <p className="text-2xl font-semibold">{brl(plano.proximaFatura)}</p>
+        <p className="text-xs text-subtle">
+          {plano.proximaFatura === plano.faturaAtual
+            ? "Igual à fatura deste mês."
+            : `${plano.proximaFatura > plano.faturaAtual ? "Sobe" : "Cai"} ${brl(Math.abs(plano.proximaFatura - plano.faturaAtual))} em relação a este mês (${brl(plano.faturaAtual)}).`}{" "}
+          Já entra como gasto no plano daquele mês, na categoria de cada compra.
+        </p>
+        {mostrarDono && plano.itensProxima.length > 0 && (
+          <p className="mt-2 text-xs text-subtle">
+            👤 Pessoais {brl(totalPor("pessoal"))} · 👥 Do casal {brl(totalPor("casal"))}
+          </p>
+        )}
+        {plano.itensProxima.length === 0 ? (
+          <p className="mt-3 text-sm text-subtle">Nenhuma parcela vence no mês seguinte.</p>
+        ) : (
+          <ul className="mt-3 space-y-1.5 text-sm">
+            {plano.itensProxima.map((i, k) => (
+              <li key={k} className="flex flex-wrap items-center justify-between gap-x-3">
+                <span className="min-w-0 break-words">
+                  {i.descricao} <ChipTipo tipo={i.escopo} />
+                </span>
+                <span className="text-subtle">
+                  {brl(i.valor)} · {ROTULO[i.categoria]}
+                  {mostrarDono ? ` · ${nomeDe(i.autor_email)}` : ""}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div className="mt-4">
+        <p className="mb-2 text-xs text-subtle">Peso das parcelas na renda, mês a mês (o ideal é até 20%)</p>
+        <ul className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+          {plano.meses.map((m) => (
+            <li key={m.mes} className="rounded-lg bg-muted p-2 text-center text-xs">
+              <p className="capitalize text-subtle">{abrevMes(m.mes)}</p>
+              <p className="font-medium">{brl(m.total)}</p>
+              <p className={m.pct > 0.2 ? "font-medium text-danger" : "text-subtle"}>{r.base > 0 ? `${Math.round(m.pct * 100)}%` : "–"}</p>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="mt-4">
+        <h3 className="text-sm font-medium">Estratégias para pagar</h3>
+        <ul className="mt-2 space-y-2 text-sm">
+          {plano.estrategias.map((e) => (
+            <li key={e.titulo} className="rounded-lg border border-line p-3">
+              <strong>{e.titulo}.</strong> <span className="text-subtle">{e.texto}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="mt-3">
+        <Dica titulo="Em qual categoria a parcela entra?">
+          <p>A parcela entra no mês em que vence, como gasto, na categoria do que você comprou (e não do cartão).</p>
+          <p>Necessidades: o essencial (geladeira, remédio, mercado). Lazer: o que é desejo (TV, viagem, roupa). Economias: só o que você guarda ou investe, então parcela de compra quase nunca entra aqui.</p>
+          <p>Na dúvida: se ficar sem aquilo você perde o básico, é necessidade. O total de cada categoria aparece em &ldquo;Limites do mês&rdquo;.</p>
+        </Dica>
+      </div>
 
       <div className="mt-3">
         <p className="mb-1 text-xs text-subtle">Parcelas dos próximos 6 meses</p>
@@ -435,7 +516,7 @@ export function PainelPessoal({
           { titulo: "Entradas do mês", valor: r.entradas, dica: `Fixa ${brl(r.fixa)} + variável ${brl(r.variavel)}` },
           { titulo: "Gastos pessoais", valor: r.gasto.necessidade + r.gasto.lazer, dica: "Necessidades + lazer, sem os do casal" },
           { titulo: "Reservado / Guardado", valor: r.gasto.economia, dica: "O que foi para economias" },
-          { titulo: "Parcelas do mês", valor: r.parcelas, dica: "Compras a prazo que vencem" },
+          { titulo: "Parcelas do mês", valor: r.parcelas, dica: `Próxima fatura: ${brl(proximaFatura(transacoes.filter(filtro), mes))}` },
           { titulo: "Renda base dos limites", valor: r.base, dica: "Fixa + variável esperada" },
         ]}
       />
@@ -466,6 +547,7 @@ export function PainelPessoal({
         meuEmail={eu.email}
         nomeDe={nomeDe}
         somenteLeitura={somenteLeitura}
+        mostrarDono={false}
         g={g}
       />
       <Movimentos
@@ -528,7 +610,7 @@ export function PainelCasal({
           { titulo: "Entradas combinadas", valor: r.entradas, dica: `Fixa ${brl(r.fixa)} + variável ${brl(r.variavel)}` },
           { titulo: "Saídas combinadas", valor: r.saidas },
           { titulo: `Reservado (${taxaEconomia}% da renda)`, valor: r.gasto.economia },
-          { titulo: "Parcelas do mês", valor: r.parcelas, dica: "Compras a prazo que vencem" },
+          { titulo: "Parcelas do mês", valor: r.parcelas, dica: `Próxima fatura: ${brl(proximaFatura(transacoes, mes))}` },
           { titulo: "Renda base dos limites", valor: r.base, dica: "Fixa + variável esperada" },
         ]}
       />
@@ -603,6 +685,7 @@ export function PainelCasal({
         meuEmail={eu.email}
         nomeDe={nomeDe}
         somenteLeitura={false}
+        mostrarDono
         g={g}
       />
       <Movimentos

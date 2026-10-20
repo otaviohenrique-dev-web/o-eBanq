@@ -318,3 +318,117 @@ export function podeComprar(r: Resumo, categoria: Categoria, valor: number, parc
   }
   return { nivel: "ok", texto: `Pode comprar: sobram ${brl(sobra)} em ${nome} neste mês.` };
 }
+
+export type ItemFatura = { descricao: string; valor: number; categoria: Categoria; escopo: Escopo; autor_email: string };
+export type Estrategia = { titulo: string; texto: string };
+
+export type PlanoParcelas = {
+  mesFatura: string;
+  faturaAtual: number;
+  proximaFatura: number;
+  itensProxima: ItemFatura[];
+  /** Total de parcelas e peso na renda nos próximos 6 meses, a partir do mês selecionado. */
+  meses: { mes: string; total: number; pct: number }[];
+  /** Quanto ainda cabe em novas parcelas neste mês mantendo o teto (negativo = acima do teto). */
+  folga: number;
+  estrategias: Estrategia[];
+};
+
+/**
+ * Acompanha as compras a prazo e sugere como pagá-las. `parcelasTs` são as parcelas já
+ * geradas (origem "parcela") do recorte em análise e `base` é a renda usada nos limites.
+ */
+export function planejarParcelas(
+  parcelamentos: Parcelamento[],
+  parcelasTs: Transacao[],
+  mes: string,
+  base: number,
+): PlanoParcelas {
+  const totalMes = (m: string) => soma(parcelasTs.filter((t) => t.data.startsWith(m)));
+  const proxMes = addMeses(mes, 1);
+  const faturaAtual = totalMes(mes);
+  const meses = Array.from({ length: 6 }, (_, i) => {
+    const m = addMeses(mes, i);
+    const total = totalMes(m);
+    return { mes: m, total, pct: base > 0 ? total / base : 0 };
+  });
+  const itensProxima = parcelasTs
+    .filter((t) => t.data.startsWith(proxMes))
+    .map((t) => ({ descricao: t.descricao, valor: t.valor, categoria: t.categoria, escopo: t.escopo, autor_email: t.autor_email }));
+
+  const teto = base * TETO_PARCELAS;
+  const folga = teto - faturaAtual;
+
+  // Só entram nas estratégias de quitação as compras que já começaram e ainda têm parcelas a pagar.
+  const emCurso = parcelamentos
+    .map((p) => {
+      const pos = difMeses(p.primeira, mes) + 1;
+      const restantes = p.parcelas - pos + 1;
+      const parcela = p.valor_total / p.parcelas;
+      return { p, pos, restantes, parcela, saldo: parcela * restantes, fim: addMeses(p.primeira, p.parcelas - 1) };
+    })
+    .filter((a) => a.pos >= 1 && a.restantes > 0);
+
+  const estrategias: Estrategia[] = [];
+  if (base <= 0) {
+    estrategias.push({ titulo: "Informe sua renda", texto: "Cadastre seu salário ou uma entrada para comparar as parcelas com a renda." });
+  } else if (folga < 0) {
+    estrategias.push({
+      titulo: "Parcelas acima do teto",
+      texto: `Neste mês as parcelas somam ${brl(faturaAtual)} (${Math.round((faturaAtual / base) * 100)}% da renda), ${brl(-folga)} acima do teto de ${TETO_PARCELAS * 100}%. Evite novas compras a prazo até a fatura cair.`,
+    });
+  } else {
+    estrategias.push({
+      titulo: "Folga para novas compras",
+      texto: `Ainda cabem até ${brl(folga)} por mês em novas parcelas sem passar de ${TETO_PARCELAS * 100}% da renda.`,
+    });
+  }
+
+  if (emCurso.length > 0) {
+    const primeira = [...emCurso].sort((a, b) => a.fim.localeCompare(b.fim))[0];
+    estrategias.push({
+      titulo: "Próximo alívio na fatura",
+      texto: `${primeira.p.descricao} termina em ${rotuloMes(primeira.fim)}. A partir de ${rotuloMes(addMeses(primeira.fim, 1))} a fatura cai cerca de ${brl(primeira.parcela)} por mês.`,
+    });
+  }
+  if (emCurso.length >= 2) {
+    const menor = [...emCurso].sort((a, b) => a.saldo - b.saldo)[0];
+    estrategias.push({
+      titulo: "Quitar primeiro a menor dívida",
+      texto: `${menor.p.descricao} é a de menor saldo (faltam ${brl(menor.saldo)} em ${menor.restantes} parcelas). Quitá-la libera ${brl(menor.parcela)} por mês mais rápido. Ao antecipar parcelas, peça o desconto de juros.`,
+    });
+    const maior = [...emCurso].sort((a, b) => b.parcela - a.parcela)[0];
+    if (maior.p.id !== menor.p.id) {
+      estrategias.push({
+        titulo: "Aliviar o caixa mensal",
+        texto: `Para sobrar mais dinheiro por mês, antecipe ${maior.p.descricao}: é a maior parcela (${brl(maior.parcela)}) e faltam ${brl(maior.saldo)}.`,
+      });
+    }
+  }
+  return { mesFatura: proxMes, faturaAtual, proximaFatura: totalMes(proxMes), itensProxima, meses, folga, estrategias };
+}
+
+const SEM_ACENTO = /[\u0300-\u036f]/g;
+const PALAVRAS: Record<Categoria, string[]> = {
+  necessidade: [
+    "aluguel", "condominio", "luz", "energia", "agua", "internet", "mercado", "supermercado", "feira", "farmacia",
+    "remedio", "saude", "consulta", "plano de saude", "escola", "faculdade", "curso", "transporte", "gasolina",
+    "combustivel", "onibus", "uber", "geladeira", "fogao", "maquina de lavar", "colchao", "cama", "pneu", "seguro",
+    "iptu", "ipva", "conserto", "reforma", "gas",
+  ],
+  lazer: [
+    "tv", "televisao", "videogame", "playstation", "xbox", "viagem", "passagem", "hotel", "restaurante", "ifood",
+    "cinema", "show", "ingresso", "roupa", "tenis", "sapato", "perfume", "presente", "netflix", "spotify", "streaming",
+    "festa", "bar", "pizza", "hamburguer", "jogo", "brinquedo",
+  ],
+  economia: ["investimento", "tesouro", "cdb", "poupanca", "reserva", "previdencia", "aporte", "cofrinho"],
+};
+
+/** Sugere a categoria pelo que foi comprado (só uma dica: a decisão é da pessoa). */
+export function sugerirCategoria(descricao: string): Categoria | null {
+  const texto = ` ${descricao.toLowerCase().normalize("NFD").replace(SEM_ACENTO, "")} `;
+  for (const cat of ["economia", "necessidade", "lazer"] as Categoria[]) {
+    if (PALAVRAS[cat].some((w) => texto.includes(` ${w} `) || texto.includes(` ${w}s `) || (w.length > 4 && texto.includes(w)))) return cat;
+  }
+  return null;
+}

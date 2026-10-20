@@ -6,6 +6,7 @@ import {
   hoje,
   parseValor,
   ROTULO,
+  sugerirCategoria,
   type Categoria,
   type Conta,
   type Escopo,
@@ -22,6 +23,29 @@ const DICA_CATEGORIA: Record<Categoria, string> = {
   lazer: "Lazer: saídas, hobbies, streaming, compras pessoais.",
   economia: "Economias: o que você guardou ou investiu. Conta como Reservado.",
 };
+
+/** Explica em qual categoria o gasto entra e sugere uma pelo que foi comprado. */
+export function SugestaoCategoria({
+  descricao,
+  categoria,
+  onEscolher,
+}: {
+  descricao: string;
+  categoria: Categoria;
+  onEscolher: (c: Categoria) => void;
+}) {
+  const sugerida = sugerirCategoria(descricao);
+  return (
+    <div className="space-y-1.5 text-xs text-subtle">
+      <p>A categoria é do que você comprou, não de como pagou: geladeira → Necessidades, TV → Lazer, investir → Economias.</p>
+      {sugerida && sugerida !== categoria && (
+        <button type="button" onClick={() => onEscolher(sugerida)} className="rounded-full bg-muted px-3 py-1 text-foreground">
+          💡 Sugestão: {ROTULO[sugerida]} (toque para usar)
+        </button>
+      )}
+    </div>
+  );
+}
 
 export type NovaTransacao = Omit<Transacao, "id" | "autor_email">;
 
@@ -129,6 +153,7 @@ export function FormLancamento({
                 : "👤 Gasto pessoal: aparece no seu painel (Meu painel) e também soma no Casal. "}
               {DICA_CATEGORIA[categoria]}
             </p>
+            <SugestaoCategoria descricao={descricao} categoria={categoria} onEscolher={setCategoria} />
           </>
         )}
         <SeletorConta contas={contas} valor={contaId} onChange={setContaId} />

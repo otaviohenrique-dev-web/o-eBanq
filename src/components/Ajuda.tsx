@@ -97,7 +97,7 @@ const secoes = [
   {
     titulo: "Compras a prazo",
     texto:
-      "Use + Compra a prazo com o valor total e o número de parcelas. O app lança uma parcela por mês e mostra quanto vence em cada mês, com os próximos 6 meses em gráfico. O ideal é que as parcelas somem até 20% da renda.",
+      "Use + Compra a prazo com o valor total e o número de parcelas. O app lança uma parcela por mês, mostra a próxima fatura (por pessoa, no Casal), o peso das parcelas na renda mês a mês e sugere estratégias de pagamento. A parcela entra como gasto no mês em que vence, na categoria do que foi comprado (geladeira é Necessidade, TV é Lazer), e já conta nos limites. O ideal é que as parcelas somem até 20% da renda.",
   },
   {
     titulo: "Meses",
