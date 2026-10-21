@@ -1,0 +1,23 @@
+name: Alertas diários dos cartões
+
+# Todo dia às 08:00 (horário de Brasília) chama o app, que manda no Telegram os avisos
+# de fechamento e vencimento. O GitHub pode atrasar alguns minutos o início da execução.
+on:
+  schedule:
+    - cron: "0 11 * * *"
+  workflow_dispatch:
+
+jobs:
+  alertas:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Chamar o endpoint de alertas
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          SITE_URL: ${{ vars.SITE_URL || 'https://o-ebanq.onrender.com' }}
+        run: |
+          # O plano gratuito do Render "dorme": a primeira chamada pode demorar cerca de 1 minuto, por isso as tentativas.
+          curl --fail-with-body --silent --show-error \
+            --retry 5 --retry-delay 20 --retry-all-errors --max-time 120 \
+            -X POST "$SITE_URL/api/alertas" \
+            -H "Authorization: Bearer $CRON_SECRET"

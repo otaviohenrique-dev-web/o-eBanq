@@ -120,6 +120,11 @@ const secoes = [
       "Em + Compra a prazo, escolha Assinatura (mensal) para cobranças sem número de parcelas, como streaming. Ela se repete todo mês até você cancelar, entra como gasto na categoria escolhida e soma na fatura do cartão. Cancelar faz ela deixar de contar a partir do próximo mês.",
   },
   {
+    titulo: "Alertas de fechamento e vencimento",
+    texto:
+      "No topo do painel, \"Datas dos cartões\" mostra o próximo fechamento e o próximo vencimento de cada cartão, com o valor da fatura. As datas ficam vermelhas quando faltam até 3 dias e amarelas até 7. Para receber também no Telegram, toque em 🔔 Avisos no Telegram, abra o bot e toque em Iniciar. Os avisos chegam por volta das 8h: vencimento 7, 3 e 1 dia antes (e no dia) e fechamento 3 e 1 dia antes (e no dia). Só cartões com fechamento e vencimento definidos (💳 em Meus bancos) entram.",
+  },
+  {
     titulo: "Meses",
     texto: "As setas no topo trocam o mês exibido. Dá para olhar meses passados e ver quanto já está comprometido em meses futuros.",
   },
