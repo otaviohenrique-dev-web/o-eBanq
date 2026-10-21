@@ -5,6 +5,7 @@ import type { Session } from "@supabase/supabase-js";
 import {
   addMeses,
   CORES_CONTA,
+  dividasDeTerceiros,
   distribuirPagamento,
   expandir,
   hoje,
@@ -12,11 +13,14 @@ import {
   rotuloMes,
   saldoPorConta,
   type Adiantada,
+  type Assinatura,
   type Conta,
   type Parcelamento,
   type Pessoa,
   type RendaFixa,
+  type Repasse,
   type Resumo,
+  type Terceiro,
   type Transacao,
 } from "@/lib/finance";
 import { configurado, supabase } from "@/lib/supabase";
@@ -29,9 +33,11 @@ import {
   FormParcelamento,
   FormRendaFixa,
   type LinhaAdiantamento,
+  type NovaAssinatura,
   type NovaRenda,
   type NovoParcelamento,
 } from "./FormsPrazo";
+import { FormRepasse } from "./Terceiros";
 import { Logo, Marca } from "./Marca";
 import { PainelCasal, PainelPessoal, type Gestao } from "./Views";
 
@@ -107,23 +113,29 @@ type Carga = {
   parcelamentos: Parcelamento[];
   contas: Conta[];
   adiantadas: Adiantada[];
+  terceiros: Terceiro[];
+  repasses: Repasse[];
+  assinaturas: Assinatura[];
 };
 
 async function buscar(): Promise<{ erro: string } | Carga> {
-  const [a, t, r, p, c, d] = await Promise.all([
+  const [a, t, r, p, c, d, tc, rp, sg] = await Promise.all([
     supabase.from("autorizados").select("email,nome"),
     supabase.from("transacoes").select("*").order("data", { ascending: false }),
     supabase.from("rendas_fixas").select("*").order("inicio", { ascending: false }),
     supabase.from("parcelamentos").select("*").order("primeira", { ascending: false }),
     supabase.from("contas").select("*").order("criado_em", { ascending: true }),
     supabase.from("parcelas_adiantadas").select("*"),
+    supabase.from("terceiros").select("*"),
+    supabase.from("repasses").select("*"),
+    supabase.from("assinaturas").select("*"),
   ]);
-  const falha = a.error ?? t.error ?? r.error ?? p.error ?? c.error ?? d.error;
+  const falha = a.error ?? t.error ?? r.error ?? p.error ?? c.error ?? d.error ?? tc.error ?? rp.error ?? sg.error;
   if (falha) {
-    const faltaTabela = /rendas_fixas|parcelamentos|contas|conta_id|parcelas_adiantadas|dia_fechamento|dia_vencimento|data_compra/.test(falha.message);
+    const faltaTabela = /rendas_fixas|parcelamentos|contas|conta_id|parcelas_adiantadas|dia_fechamento|dia_vencimento|data_compra|terceiros|repasses|assinaturas|terceiro_id|pago_por/.test(falha.message);
     return {
       erro: faltaTabela
-        ? "Faltam tabelas ou colunas no banco. No Supabase (SQL Editor), rode, em ordem, os arquivos 02, 03 e 04 da pasta supabase."
+        ? "Faltam tabelas ou colunas no banco. No Supabase (SQL Editor), rode, em ordem, os arquivos 02 a 06 da pasta supabase."
         : falha.message,
     };
   }
@@ -139,6 +151,9 @@ async function buscar(): Promise<{ erro: string } | Carga> {
       valor_pago: Number(x.valor_pago),
       pago_por: x.pago_por ? String(x.pago_por).toLowerCase() : null,
     })),
+    terceiros: (tc.data ?? []).map((x) => minusculo(x)),
+    repasses: (rp.data ?? []).map((x) => ({ ...minusculo(x), valor: Number(x.valor) })),
+    assinaturas: (sg.data ?? []).map((x) => ({ ...minusculo(x), valor_mensal: Number(x.valor_mensal) })),
   };
 }
 
@@ -157,12 +172,16 @@ export default function App() {
   const [parcelamentos, setParcelamentos] = useState<Parcelamento[]>([]);
   const [contas, setContas] = useState<Conta[]>([]);
   const [adiantadas, setAdiantadas] = useState<Adiantada[]>([]);
+  const [terceiros, setTerceiros] = useState<Terceiro[]>([]);
+  const [repasses, setRepasses] = useState<Repasse[]>([]);
+  const [assinaturas, setAssinaturas] = useState<Assinatura[]>([]);
+  const [terceiroRepasse, setTerceiroRepasse] = useState<string | null>(null);
   const [alvoAdiantar, setAlvoAdiantar] = useState<string | null>(null);
   const [carregado, setCarregado] = useState(false);
   const [erro, setErro] = useState("");
   const [visao, setVisao] = useState<Visao>("meu");
   const [mesSel, setMesSel] = useState<string | null>(null);
-  const [modal, setModal] = useState<"lancar" | "comprar" | "ajuda" | "renda" | "parcelamento" | "adiantar" | null>(null);
+  const [modal, setModal] = useState<"lancar" | "comprar" | "ajuda" | "renda" | "parcelamento" | "assinatura" | "repasse" | "adiantar" | null>(null);
   const [menu, setMenu] = useState(false);
 
   useEffect(() => {
@@ -185,6 +204,9 @@ export default function App() {
     setParcelamentos(r.parcelamentos);
     setContas(r.contas);
     setAdiantadas(r.adiantadas);
+    setTerceiros(r.terceiros);
+    setRepasses(r.repasses);
+    setAssinaturas(r.assinaturas);
     setCarregado(true);
     // Primeiro acesso neste navegador: abre o guia "Como usar" uma única vez.
     try {
@@ -210,6 +232,9 @@ export default function App() {
     setParcelamentos([]);
     setContas([]);
     setAdiantadas([]);
+    setTerceiros([]);
+    setRepasses([]);
+    setAssinaturas([]);
     await supabase.auth.signOut();
   }
 
@@ -222,7 +247,42 @@ export default function App() {
   }
 
   const salvarRenda = (r: NovaRenda) => gravar(supabase.from("rendas_fixas").insert({ ...r, autor_email: email }));
-  const salvarParcelamento = (p: NovoParcelamento) => gravar(supabase.from("parcelamentos").insert({ ...p, autor_email: email }));
+  // Cartão emprestado: acha a pessoa pelo nome ou cria uma nova.
+  async function resolverTerceiro(nome: string | null): Promise<{ id: string | null; erro?: string }> {
+    const limpo = nome?.trim();
+    if (!limpo) return { id: null };
+    const existente = terceiros.find((t) => t.autor_email === email && t.nome.toLowerCase() === limpo.toLowerCase());
+    if (existente) return { id: existente.id };
+    const { data, error } = await supabase.from("terceiros").insert({ nome: limpo, autor_email: email }).select("id").single();
+    if (error || !data) return { id: null, erro: error?.message ?? "Não foi possível cadastrar a pessoa." };
+    return { id: data.id as string };
+  }
+
+  async function salvarParcelamento(p: NovoParcelamento) {
+    const { terceiro_nome, ...resto } = p;
+    const t = await resolverTerceiro(terceiro_nome);
+    if (t.erro) return t.erro;
+    return gravar(supabase.from("parcelamentos").insert({ ...resto, escopo: t.id ? "pessoal" : resto.escopo, terceiro_id: t.id, autor_email: email }));
+  }
+
+  async function salvarAssinatura(a: NovaAssinatura) {
+    const { terceiro_nome, ...resto } = a;
+    const t = await resolverTerceiro(terceiro_nome);
+    if (t.erro) return t.erro;
+    return gravar(supabase.from("assinaturas").insert({ ...resto, escopo: t.id ? "pessoal" : resto.escopo, terceiro_id: t.id, autor_email: email }));
+  }
+
+  const salvarRepasse = (terceiroId: string, valor: number, data: string, contaId: string | null) =>
+    gravar(supabase.from("repasses").insert({ terceiro_id: terceiroId, valor, data, conta_id: contaId, autor_email: email }));
+
+  function cancelarAssinatura(id: string) {
+    const a = assinaturas.find((x) => x.id === id);
+    if (!a) return;
+    // A cobrança deste mês já valeu: ela deixa de contar a partir do próximo mês.
+    const fim = hoje().slice(0, 7);
+    if (a.inicio > fim) return aoFalhar(supabase.from("assinaturas").delete().eq("id", id));
+    return aoFalhar(supabase.from("assinaturas").update({ fim }).eq("id", id));
+  }
 
   async function aoFalhar(pedido: PromiseLike<{ error: { message: string } | null }>) {
     const falha = await gravar(pedido);
@@ -366,7 +426,7 @@ export default function App() {
   const mesMax = addMeses(mesAtual, 24);
 
   // Lançamentos reais + renda fixa e parcelas geradas para cada mês
-  const todas = expandir(transacoes, rendas, parcelamentos, mesMax, adiantadas);
+  const todas = expandir(transacoes, rendas, parcelamentos, mesMax, adiantadas, { assinaturas, repasses, terceiros });
 
   // Resumo usado pelo "Posso Comprar?" de acordo com a visão ativa
   const resumoVisao: Resumo = resumirMes(
@@ -388,9 +448,21 @@ export default function App() {
 
   const saldos = saldoPorConta(todas, contas, hoje());
   const minhasContas = contas.filter((c) => c.autor_email === email);
+  const meusTerceiros = terceiros.filter((t) => t.autor_email === email);
 
   const g: Gestao = {
     hoje: hoje(),
+    terceiros,
+    repasses,
+    assinaturas,
+    onNovaAssinatura: () => setModal("assinatura"),
+    onCancelarAssinatura: cancelarAssinatura,
+    onExcluirAssinatura: (id) => aoFalhar(supabase.from("assinaturas").delete().eq("id", id)),
+    onNovoRepasse: (id) => {
+      setTerceiroRepasse(id);
+      setModal("repasse");
+    },
+    onExcluirRepasse: (id) => aoFalhar(supabase.from("repasses").delete().eq("id", id)),
     adiantadas,
     onAdiantarFatura: () => {
       setAlvoAdiantar(null);
@@ -531,6 +603,7 @@ export default function App() {
         <FormLancamento
           escopoInicial={visao === "casal" ? "casal" : "pessoal"}
           contas={minhasContas}
+          terceiros={meusTerceiros}
           onSalvar={salvar}
           onSalvarCredito={salvarParcelamento}
           onFechar={() => setModal(null)}
@@ -560,12 +633,24 @@ export default function App() {
         />
       )}
       {modal === "renda" && <FormRendaFixa mesAtual={mesAtual} contas={minhasContas} onSalvar={salvarRenda} onFechar={() => setModal(null)} />}
-      {modal === "parcelamento" && (
+      {(modal === "parcelamento" || modal === "assinatura") && (
         <FormParcelamento
           mesInicial={mes}
           escopoInicial={visao === "casal" ? "casal" : "pessoal"}
+          modoInicial={modal === "assinatura" ? "assinatura" : "parcelado"}
           contas={minhasContas}
+          terceiros={meusTerceiros}
           onSalvar={salvarParcelamento}
+          onSalvarAssinatura={salvarAssinatura}
+          onFechar={() => setModal(null)}
+        />
+      )}
+      {modal === "repasse" && terceiroRepasse && meusTerceiros.some((t) => t.id === terceiroRepasse) && (
+        <FormRepasse
+          terceiro={meusTerceiros.find((t) => t.id === terceiroRepasse)!}
+          emAberto={dividasDeTerceiros(todas, meusTerceiros, repasses, mes).find((d) => d.terceiro.id === terceiroRepasse)?.emAberto ?? 0}
+          contas={minhasContas}
+          onSalvar={(valor, data, contaId) => salvarRepasse(terceiroRepasse, valor, data, contaId)}
           onFechar={() => setModal(null)}
         />
       )}

@@ -1,5 +1,15 @@
 import { createClient } from "@supabase/supabase-js";
-import { CATEGORIAS, type Adiantada, type Categoria, type Parcelamento, type RendaFixa, type Transacao } from "@/lib/finance";
+import {
+  CATEGORIAS,
+  type Adiantada,
+  type Assinatura,
+  type Categoria,
+  type Parcelamento,
+  type RendaFixa,
+  type Repasse,
+  type Terceiro,
+  type Transacao,
+} from "@/lib/finance";
 import { INSTRUCAO_SISTEMA, montarContexto, montarPedido, type PedidoIA, type VisaoIA } from "@/lib/ia";
 
 const LIMITE_POR_HORA = 30;
@@ -94,14 +104,17 @@ export async function POST(req: Request) {
   if (erroAuth || !email) return erro("Sessão inválida. Entre novamente.", 401);
   if (!dentroDoLimite(email)) return erro("Muitas perguntas seguidas. Tente de novo daqui a pouco.", 429);
 
-  const [a, t, r, p, d] = await Promise.all([
+  const [a, t, r, p, d, tc, rp, sg] = await Promise.all([
     sb.from("autorizados").select("email,nome"),
     sb.from("transacoes").select("*"),
     sb.from("rendas_fixas").select("*"),
     sb.from("parcelamentos").select("*"),
     sb.from("parcelas_adiantadas").select("*"),
+    sb.from("terceiros").select("*"),
+    sb.from("repasses").select("*"),
+    sb.from("assinaturas").select("*"),
   ]);
-  const falha = a.error ?? t.error ?? r.error ?? p.error ?? d.error;
+  const falha = a.error ?? t.error ?? r.error ?? p.error ?? d.error ?? tc.error ?? rp.error ?? sg.error;
   if (falha) return erro("Não foi possível ler os dados.", 500);
   const pessoas = (a.data ?? []).map((x) => ({ email: String(x.email).toLowerCase(), nome: String(x.nome ?? "") }));
   if (!pessoas.some((x) => x.email === email)) return erro("Acesso não autorizado.", 403);
@@ -120,6 +133,9 @@ export async function POST(req: Request) {
       valor_pago: Number(x.valor_pago),
       pago_por: x.pago_por ? String(x.pago_por).toLowerCase() : null,
     })) as Adiantada[],
+    terceiros: (tc.data ?? []).map((x) => norm(x)) as Terceiro[],
+    repasses: (rp.data ?? []).map((x) => ({ ...norm(x), valor: Number(x.valor) })) as Repasse[],
+    assinaturas: (sg.data ?? []).map((x) => ({ ...norm(x), valor_mensal: Number(x.valor_mensal) })) as Assinatura[],
   });
 
   const corpo = JSON.stringify({

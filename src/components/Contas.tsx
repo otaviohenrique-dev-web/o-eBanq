@@ -25,8 +25,16 @@ const estiloTipo = {
   parcela: "bg-warning/20 text-foreground",
   adiantada: "bg-primary/15 text-foreground",
   paga: "bg-primary/15 text-foreground",
+  assinatura: "bg-serie-1/15 text-foreground",
+  reembolso: "bg-primary/15 text-foreground",
 };
-const rotuloTipo = { pessoal: "👤 Pessoal", casal: "👥 Casal", fixa: "🔁 Renda fixa", parcela: "🧾 Parcela", adiantada: "⏩ Adiantada", paga: "✅ Paga" };
+const rotuloTipo = { pessoal: "👤 Pessoal", casal: "👥 Casal", fixa: "🔁 Renda fixa", parcela: "🧾 Parcela", adiantada: "⏩ Adiantada", paga: "✅ Paga", assinatura: "🔄 Assinatura", reembolso: "↩️ Repasse recebido" };
+
+/** Etiqueta da pessoa que usou o seu cartão emprestado. */
+export function ChipTerceiro({ nome }: { nome?: string }) {
+  if (!nome) return null;
+  return <span className="inline-block rounded-full bg-muted px-2 py-0.5 text-xs">🤝 {nome}</span>;
+}
 
 /** Etiqueta que deixa claro se o lançamento é pessoal, do casal, renda fixa ou parcela. */
 export function ChipTipo({ tipo }: { tipo: keyof typeof estiloTipo }) {

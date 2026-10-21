@@ -110,6 +110,16 @@ const secoes = [
       "Use 💳 Pagar / adiantar fatura (um mês inteiro) ou o botão em cada compra. Informe a data, quem pagou, de qual banco saiu o dinheiro e o valor pago (se o banco deu desconto, informe). Antes do vencimento conta como adiantamento: as parcelas saem da fatura original e entram na data do pagamento. Se quem pagou não é o dono da compra, o acerto entre vocês é calculado sozinho em \"Divisão dos gastos do casal\": compras do casal são rateadas pela renda de cada um, e compras pessoais pagas pela outra pessoa são devidas por inteiro.",
   },
   {
+    titulo: "Cartão emprestado",
+    texto:
+      "Emprestou seu cartão? Ao cadastrar a compra ou a assinatura, escreva o nome de quem vai pagar em \"Quem vai pagar\". Essas compras não entram no seu orçamento nem na divisão do casal. Em Cartão emprestado você vê quanto a pessoa deve repassar no mês, o que já repassou e o total em aberto. Quando ela devolver o dinheiro, registre o repasse (e o banco que recebeu), e use Copiar resumo para mandar a conta para ela.",
+  },
+  {
+    titulo: "Assinaturas",
+    texto:
+      "Em + Compra a prazo, escolha Assinatura (mensal) para cobranças sem número de parcelas, como streaming. Ela se repete todo mês até você cancelar, entra como gasto na categoria escolhida e soma na fatura do cartão. Cancelar faz ela deixar de contar a partir do próximo mês.",
+  },
+  {
     titulo: "Meses",
     texto: "As setas no topo trocam o mês exibido. Dá para olhar meses passados e ver quanto já está comprometido em meses futuros.",
   },

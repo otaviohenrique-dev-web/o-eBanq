@@ -11,8 +11,10 @@ import {
   type Categoria,
   type Conta,
   type Escopo,
+  type Terceiro,
   type Transacao,
 } from "@/lib/finance";
+import { CampoTerceiro } from "./CampoTerceiro";
 import type { NovoParcelamento } from "./FormsPrazo";
 import { SeletorConta } from "./Contas";
 import { CampoValor } from "./CampoValor";
@@ -75,12 +77,14 @@ export function Modal({ titulo, onFechar, children }: { titulo: string; onFechar
 export function FormLancamento({
   escopoInicial,
   contas,
+  terceiros,
   onSalvar,
   onSalvarCredito,
   onFechar,
 }: {
   escopoInicial: Escopo;
   contas: Conta[];
+  terceiros: Terceiro[];
   onSalvar: (t: NovaTransacao) => Promise<string | null>;
   onSalvarCredito: (p: NovoParcelamento) => Promise<string | null>;
   onFechar: () => void;
@@ -93,6 +97,7 @@ export function FormLancamento({
   const [data, setData] = useState(hoje);
   const [contaId, setContaId] = useState<string | null>(contas.length === 1 ? contas[0].id : null);
   const [creditoEscolha, setCreditoEscolha] = useState<boolean | null>(null);
+  const [terceiroNome, setTerceiroNome] = useState("");
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
 
@@ -118,10 +123,11 @@ export function FormLancamento({
         parcelas: 1,
         primeira: fatura.mes,
         categoria,
-        escopo,
+        escopo: terceiroNome.trim() ? "pessoal" : escopo,
         conta_id: contaId,
         data_compra: data,
         dia_vencimento: vencimento,
+        terceiro_nome: terceiroNome.trim() || null,
       });
       setSalvando(false);
       if (falhaCredito) setErro(falhaCredito);
@@ -201,6 +207,7 @@ export function FormLancamento({
             </span>
           </label>
         )}
+        {fatura && <CampoTerceiro terceiros={terceiros} valor={terceiroNome} onChange={setTerceiroNome} />}
         <input className={campo} type="date" value={data} onChange={(e) => setData(e.target.value)} aria-label="Data" />
         {erro && <p className="text-sm text-danger">{erro}</p>}
         <button type="submit" disabled={salvando} className={botaoPrimario}>

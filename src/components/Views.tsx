@@ -6,6 +6,7 @@ import {
   brl,
   CATEGORIAS,
   difMeses,
+  dividasDeTerceiros,
   dividirGastos,
   noMes,
   pendentes,
@@ -19,16 +20,21 @@ import {
   ultimosMeses,
   valorDaParcela,
   type Adiantada,
+  type Assinatura,
   type Conta,
   type Parcelamento,
   type Pessoa,
   type RendaFixa,
+  type Repasse,
   type Resumo,
+  type Terceiro,
   type Transacao,
 } from "@/lib/finance";
 import { Dica, PrimeirosPassos } from "./Ajuda";
 import { BarrasMeses, BarrasParcelas, BarrasPessoas, Rosca } from "./Charts";
-import { ChipConta, ChipTipo, ContasPanel } from "./Contas";
+import { AssinaturasPanel } from "./AssinaturasPanel";
+import { ChipConta, ChipTerceiro, ChipTipo, ContasPanel } from "./Contas";
+import { CartaoEmprestadoPanel } from "./Terceiros";
 
 const painel = "rounded-2xl bg-surface p-5 shadow-sm";
 const botaoPrimario = "rounded-full bg-primary px-6 py-3 font-medium text-on-primary";
@@ -37,6 +43,14 @@ const botaoPequeno = "rounded-full border border-line px-3 py-1 text-xs text-sub
 
 export type Gestao = {
   hoje: string;
+  terceiros: Terceiro[];
+  repasses: Repasse[];
+  assinaturas: Assinatura[];
+  onNovaAssinatura: () => void;
+  onCancelarAssinatura: (id: string) => void;
+  onExcluirAssinatura: (id: string) => void;
+  onNovoRepasse: (terceiroId: string) => void;
+  onExcluirRepasse: (id: string) => void;
   adiantadas: Adiantada[];
   onAdiantarFatura: () => void;
   onAdiantarCompra: (parcelamentoId: string) => void;
@@ -236,6 +250,7 @@ function RendaFixaCard({
 function ParcelasPanel({
   parcelamentos,
   parcelasTs,
+  assinaturasTs,
   mes,
   r,
   meuEmail,
@@ -246,6 +261,7 @@ function ParcelasPanel({
 }: {
   parcelamentos: Parcelamento[];
   parcelasTs: Transacao[];
+  assinaturasTs: Transacao[];
   mes: string;
   r: Resumo;
   meuEmail: string;
@@ -254,12 +270,16 @@ function ParcelasPanel({
   mostrarDono: boolean;
   g: Gestao;
 }) {
+  // Compras de terceiros no seu cartão ficam fora do seu plano (veja "Cartão emprestado").
+  const proprias = parcelasTs.filter((t) => !t.terceiro_id);
+  const parcelamentosProprios = parcelamentos.filter((p) => !p.terceiro_id);
   const proximos = Array.from({ length: 6 }, (_, i) => {
     const m = addMeses(mes, i);
-    return { mes: m, total: parcelasTs.filter((t) => t.data.startsWith(m)).reduce((s, t) => s + t.valor, 0) };
+    return { mes: m, total: proprias.filter((t) => t.data.startsWith(m)).reduce((s, t) => s + t.valor, 0) };
   });
+  const assinProx = assinaturasTs.filter((t) => t.data.startsWith(addMeses(mes, 1))).reduce((acc, t) => acc + t.valor, 0);
   const percentual = r.base > 0 ? Math.round((r.parcelas / r.base) * 100) : 0;
-  const plano = planejarParcelas(parcelamentos, parcelasTs, mes, r.base, g.adiantadas);
+  const plano = planejarParcelas(parcelamentosProprios, proprias, mes, r.base, g.adiantadas);
   const totalPor = (esc: string) => plano.itensProxima.filter((i) => i.escopo === esc).reduce((acc, i) => acc + i.valor, 0);
   return (
     <section className={painel}>
@@ -300,6 +320,12 @@ function ParcelasPanel({
             : `${plano.proximaFatura > plano.faturaAtual ? "Sobe" : "Cai"} ${brl(Math.abs(plano.proximaFatura - plano.faturaAtual))} em relação a este mês (${brl(plano.faturaAtual)}).`}{" "}
           Já entra como gasto no plano daquele mês, na categoria de cada compra.
         </p>
+        {assinProx > 0 && (
+          <p className="mt-2 text-xs text-subtle">
+            🔄 + Assinaturas no mês seguinte: <strong className="text-foreground">{brl(assinProx)}</strong> · total da fatura{" "}
+            <strong className="text-foreground">{brl(plano.proximaFatura + assinProx)}</strong>
+          </p>
+        )}
         {mostrarDono && plano.itensProxima.length > 0 && (
           <p className="mt-2 text-xs text-subtle">
             👤 Pessoais {brl(totalPor("pessoal"))} · 👥 Do casal {brl(totalPor("casal"))}
@@ -384,6 +410,7 @@ function ParcelasPanel({
                     {p.dia_vencimento ? ` · vence dia ${p.dia_vencimento}` : ""}
                   </p>
                   <ChipConta conta={g.contas.find((c) => c.id === p.conta_id)} />
+                  <ChipTerceiro nome={g.terceiros.find((t) => t.id === p.terceiro_id)?.nome} />
                   {restantes > 0 && <p className="text-xs text-subtle">Falta pagar {brl(saldoRestante)} ({restantes} parcelas, contando este mês)</p>}
                   {ads.length > 0 && (
                     <p className="mt-1 text-xs">
@@ -430,6 +457,7 @@ function Movimentos({
   titulo,
   lista,
   contas,
+  terceiros,
   nomeDe,
   meuEmail,
   onExcluir,
@@ -438,6 +466,7 @@ function Movimentos({
   titulo: string;
   lista: Transacao[];
   contas: Conta[];
+  terceiros: Terceiro[];
   nomeDe: (email: string) => string;
   meuEmail: string;
   onExcluir?: (id: string) => void;
@@ -506,6 +535,7 @@ function Movimentos({
                 {t.origem && <ChipTipo tipo={t.origem} />}
                 {t.paga && <ChipTipo tipo={t.adiantada ? "adiantada" : "paga"} />}
                 <ChipConta conta={contas.find((c) => c.id === t.conta_id)} />
+                {t.terceiro_id && t.origem !== "reembolso" && <ChipTerceiro nome={terceiros.find((x) => x.id === t.terceiro_id)?.nome} />}
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-3">
@@ -554,7 +584,8 @@ export function PainelPessoal({
     .filter((t) => t.autor_email === pessoa.email && t.escopo === "casal" && t.tipo === "saida")
     .reduce((acc, t) => acc + t.valor, 0);
   const contasDaPessoa = g.contas.filter((c) => c.autor_email === pessoa.email);
-  const faturas = faturasDosCartoes(g.contas, transacoes.filter((t) => t.origem === "parcela"), g.hoje);
+  const dividas = dividasDeTerceiros(transacoes, g.terceiros.filter((t) => t.autor_email === pessoa.email), g.repasses, mes);
+  const faturas = faturasDosCartoes(g.contas, transacoes.filter((t) => t.origem === "parcela" || t.origem === "assinatura"), g.hoje);
 
   return (
     <div className="space-y-6 sm:space-y-8">
@@ -609,14 +640,31 @@ export function PainelPessoal({
         r={r}
         meuEmail={eu.email}
         nomeDe={nomeDe}
+        assinaturasTs={transacoes.filter(filtro).filter((t) => t.origem === "assinatura")}
         somenteLeitura={somenteLeitura}
         mostrarDono={false}
         g={g}
       />
+      <AssinaturasPanel
+        assinaturas={g.assinaturas.filter((a) => a.autor_email === pessoa.email && a.escopo === "pessoal")}
+        mes={mes}
+        contas={g.contas}
+        terceiros={g.terceiros}
+        meuEmail={eu.email}
+        nomeDe={nomeDe}
+        somenteLeitura={somenteLeitura}
+        onNova={g.onNovaAssinatura}
+        onCancelar={g.onCancelarAssinatura}
+        onExcluir={g.onExcluirAssinatura}
+      />
+      {!somenteLeitura && (
+        <CartaoEmprestadoPanel dividas={dividas} mes={mes} podeEditar onRepasse={g.onNovoRepasse} onExcluirRepasse={g.onExcluirRepasse} />
+      )}
       <Movimentos
         titulo={somenteLeitura ? `Lançamentos pessoais de ${pessoa.nome} no mês` : "Seus lançamentos pessoais do mês"}
         lista={doMes}
         contas={g.contas}
+        terceiros={g.terceiros}
         nomeDe={nomeDe}
         meuEmail={eu.email}
         onExcluir={somenteLeitura ? undefined : g.onExcluir}
@@ -659,7 +707,7 @@ export function PainelCasal({
     return { nome: p.nome, entradas: somaEscopo("pessoal"), saidas: somaEscopo("casal") };
   });
   const divisao = par ? dividirGastos(doMes, [eu, par]) : null;
-  const faturas = faturasDosCartoes(g.contas, transacoes.filter((t) => t.origem === "parcela"), g.hoje);
+  const faturas = faturasDosCartoes(g.contas, transacoes.filter((t) => t.origem === "parcela" || t.origem === "assinatura"), g.hoje);
   const taxaEconomia = r.entradas > 0 ? Math.round((r.gasto.economia / r.entradas) * 100) : 0;
 
   return (
@@ -753,14 +801,28 @@ export function PainelCasal({
         r={r}
         meuEmail={eu.email}
         nomeDe={nomeDe}
+        assinaturasTs={transacoes.filter((t) => t.origem === "assinatura")}
         somenteLeitura={false}
         mostrarDono
         g={g}
+      />
+      <AssinaturasPanel
+        assinaturas={g.assinaturas}
+        mes={mes}
+        contas={g.contas}
+        terceiros={g.terceiros}
+        meuEmail={eu.email}
+        nomeDe={nomeDe}
+        somenteLeitura={false}
+        onNova={g.onNovaAssinatura}
+        onCancelar={g.onCancelarAssinatura}
+        onExcluir={g.onExcluirAssinatura}
       />
       <Movimentos
         titulo="Movimentações do casal no mês"
         lista={doMes}
         contas={g.contas}
+        terceiros={g.terceiros}
         nomeDe={nomeDe}
         meuEmail={eu.email}
         onExcluir={g.onExcluir}

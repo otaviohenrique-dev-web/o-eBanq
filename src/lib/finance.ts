@@ -11,7 +11,7 @@ export type Transacao = {
   categoria: Categoria;
   data: string; // YYYY-MM-DD
   /** Preenchido nos lançamentos gerados automaticamente (renda fixa ou parcela). */
-  origem?: "fixa" | "parcela";
+  origem?: "fixa" | "parcela" | "assinatura" | "reembolso";
   refId?: string;
   conta_id?: string | null;
   /** Parcela paga antes do vencimento (já está na data em que foi paga). */
@@ -20,6 +20,8 @@ export type Transacao = {
   paga?: boolean;
   /** E-mail de quem pagou; se vazio, quem pagou foi o autor. */
   pago_por?: string | null;
+  /** Compra no seu cartão que pertence a outra pessoa: não entra no seu orçamento. */
+  terceiro_id?: string | null;
 };
 
 export type RendaFixa = {
@@ -46,6 +48,29 @@ export type Parcelamento = {
   data_compra?: string | null;
   /** Dia do vencimento do cartão usado (copiado na criação). */
   dia_vencimento?: number | null;
+  terceiro_id?: string | null;
+};
+
+/** Pessoa que usa o seu cartão emprestado. */
+export type Terceiro = { id: string; autor_email: string; nome: string };
+
+/** Dinheiro que um terceiro devolveu. */
+export type Repasse = { id: string; autor_email: string; terceiro_id: string; valor: number; data: string; conta_id?: string | null };
+
+/** Cobrança mensal sem número de parcelas, até ser cancelada. */
+export type Assinatura = {
+  id: string;
+  autor_email: string;
+  escopo: Escopo;
+  descricao: string;
+  valor_mensal: number;
+  categoria: Categoria;
+  conta_id?: string | null;
+  terceiro_id?: string | null;
+  inicio: string; // YYYY-MM
+  fim: string | null; // YYYY-MM, inclusive
+  dia_vencimento?: number | null;
+  data_compra?: string | null;
 };
 
 /** Parcela paga antes do vencimento. */
@@ -212,6 +237,7 @@ export function expandir(
   parcelamentos: Parcelamento[],
   ateMes: string,
   adiantadas: Adiantada[] = [],
+  extras: { assinaturas?: Assinatura[]; repasses?: Repasse[]; terceiros?: Terceiro[] } = {},
 ): Transacao[] {
   const geradas: Transacao[] = [];
   for (const r of rendas) {
@@ -254,8 +280,46 @@ export function expandir(
         adiantada: Boolean(ad && ad.pago_em < vencimentoDaParcela(p, k)),
         paga: Boolean(ad),
         pago_por: ad ? pagador : null,
+        terceiro_id: p.terceiro_id ?? null,
       });
     }
+  }
+  for (const a of extras.assinaturas ?? []) {
+    const ultimo = a.fim && a.fim < ateMes ? a.fim : ateMes;
+    for (let m = a.inicio; m <= ultimo; m = addMeses(m, 1)) {
+      geradas.push({
+        id: `assinatura-${a.id}-${m}`,
+        autor_email: a.autor_email,
+        escopo: a.escopo,
+        tipo: "saida",
+        descricao: a.descricao,
+        valor: a.valor_mensal,
+        categoria: a.categoria,
+        data: `${m}-${p2(a.dia_vencimento ?? 1)}`,
+        origem: "assinatura",
+        refId: a.id,
+        conta_id: a.conta_id ?? null,
+        terceiro_id: a.terceiro_id ?? null,
+      });
+    }
+  }
+  // Dinheiro devolvido por terceiros: entra no saldo do banco, mas não conta como renda.
+  const nomes = new Map((extras.terceiros ?? []).map((t) => [t.id, t.nome]));
+  for (const r of extras.repasses ?? []) {
+    geradas.push({
+      id: `repasse-${r.id}`,
+      autor_email: r.autor_email,
+      escopo: "pessoal",
+      tipo: "entrada",
+      descricao: `Repasse de ${nomes.get(r.terceiro_id) ?? "terceiro"}`,
+      valor: r.valor,
+      categoria: "necessidade",
+      data: r.data,
+      origem: "reembolso",
+      refId: r.id,
+      conta_id: r.conta_id ?? null,
+      terceiro_id: r.terceiro_id,
+    });
   }
   return [...ts, ...geradas];
 }
@@ -301,8 +365,9 @@ function limitesDe(base: number): Record<Categoria, number> {
 }
 
 export function resumir(ts: Transacao[]): Resumo {
-  const entradasTs = ts.filter((t) => t.tipo === "entrada");
-  const saidas = ts.filter((t) => t.tipo === "saida");
+  // Compras de terceiros no seu cartão e repasses recebidos não entram no orçamento.
+  const entradasTs = ts.filter((t) => t.tipo === "entrada" && t.origem !== "reembolso");
+  const saidas = ts.filter((t) => t.tipo === "saida" && !t.terceiro_id);
   const entradas = soma(entradasTs);
   const gasto = {
     necessidade: soma(saidas.filter((t) => t.categoria === "necessidade")),
@@ -356,11 +421,11 @@ export function dividirGastos(
   acerto: Acerto;
 } {
   const quemPagou = (t: Transacao) => t.pago_por ?? t.autor_email;
-  const saidas = doMes.filter((t) => t.tipo === "saida");
+  const saidas = doMes.filter((t) => t.tipo === "saida" && !t.terceiro_id);
   const casais = saidas.filter((t) => t.escopo === "casal");
   const pessoaisDeOutro = saidas.filter((t) => t.escopo === "pessoal" && quemPagou(t) !== t.autor_email);
   const totalCasal = soma(casais);
-  const rendas = pessoas.map((p) => soma(doMes.filter((t) => t.tipo === "entrada" && t.autor_email === p.email)));
+  const rendas = pessoas.map((p) => soma(doMes.filter((t) => t.tipo === "entrada" && t.origem !== "reembolso" && t.autor_email === p.email)));
   const rendaTotal = rendas[0] + rendas[1];
   const partes = pessoas.map((pessoa, i) => ({
     pessoa,
@@ -379,6 +444,36 @@ export function dividirGastos(
         ? { de: pessoas[0], para: pessoas[1], valor }
         : { de: pessoas[1], para: pessoas[0], valor };
   return { totalCasal, pessoaisPagosPorOutro: soma(pessoaisDeOutro), partes, acerto };
+}
+
+export type DividaTerceiro = {
+  terceiro: Terceiro;
+  /** Compras dele que vencem no mês (parcelas, 1x no crédito e assinaturas). */
+  itens: Transacao[];
+  devidoMes: number;
+  repassadoMes: number;
+  /** Quanto ainda falta devolver, somando todos os meses até o fim do mês selecionado. */
+  emAberto: number;
+  repasses: Repasse[];
+};
+
+/** Quanto cada pessoa que usa o seu cartão deve repassar no mês e no total até ele. */
+export function dividasDeTerceiros(todas: Transacao[], terceiros: Terceiro[], repasses: Repasse[], mes: string): DividaTerceiro[] {
+  const fimMes = `${mes}-31`;
+  return terceiros.map((terceiro) => {
+    const saidas = todas.filter((t) => t.tipo === "saida" && t.terceiro_id === terceiro.id);
+    const rs = repasses.filter((r) => r.terceiro_id === terceiro.id);
+    const somaR = (lista: Repasse[]) => lista.reduce((acc, r) => acc + r.valor, 0);
+    const itens = saidas.filter((t) => t.data.startsWith(mes)).sort((a, b) => a.data.localeCompare(b.data));
+    return {
+      terceiro,
+      itens,
+      devidoMes: arredonda(soma(itens)),
+      repassadoMes: arredonda(somaR(rs.filter((r) => r.data.startsWith(mes)))),
+      emAberto: arredonda(soma(saidas.filter((t) => t.data <= fimMes)) - somaR(rs.filter((r) => r.data <= fimMes))),
+      repasses: [...rs].sort((a, b) => b.data.localeCompare(a.data)),
+    };
+  });
 }
 
 export type Parecer = { nivel: "ok" | "atencao" | "nao"; texto: string };

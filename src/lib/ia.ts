@@ -1,5 +1,6 @@
 import {
   addMeses,
+  dividasDeTerceiros,
   dividirGastos,
   expandir,
   planejarParcelas,
@@ -9,10 +10,13 @@ import {
   ROTULO,
   ultimosMeses,
   type Adiantada,
+  type Assinatura,
   type Categoria,
   type Parcelamento,
   type Pessoa,
   type RendaFixa,
+  type Repasse,
+  type Terceiro,
   type Transacao,
 } from "./finance";
 
@@ -38,15 +42,18 @@ export function montarContexto(args: {
   rendas: RendaFixa[];
   parcelamentos: Parcelamento[];
   adiantadas: Adiantada[];
+  terceiros: Terceiro[];
+  repasses: Repasse[];
+  assinaturas: Assinatura[];
 }) {
-  const { visao, mes, email, pessoas, transacoes, rendas, parcelamentos, adiantadas } = args;
-  const todas = expandir(transacoes, rendas, parcelamentos, addMeses(mes, 12), adiantadas);
+  const { visao, mes, email, pessoas, transacoes, rendas, parcelamentos, adiantadas, terceiros, repasses, assinaturas } = args;
+  const todas = expandir(transacoes, rendas, parcelamentos, addMeses(mes, 12), adiantadas, { assinaturas, repasses, terceiros });
   const filtro = (t: Transacao) => (visao === "casal" ? true : t.autor_email === email && t.escopo === "pessoal");
   const minhas = todas.filter(filtro);
   const r = resumirMes(todas, mes, filtro);
   const doMes = minhas.filter((t) => t.data.startsWith(mes));
-  const parcelamentosDoRecorte = parcelamentos.filter((p) => (visao === "casal" ? true : p.autor_email === email && p.escopo === "pessoal"));
-  const plano = planejarParcelas(parcelamentosDoRecorte, minhas.filter((t) => t.origem === "parcela"), mes, r.base, adiantadas);
+  const parcelamentosDoRecorte = parcelamentos.filter((p) => !p.terceiro_id && (visao === "casal" ? true : p.autor_email === email && p.escopo === "pessoal"));
+  const plano = planejarParcelas(parcelamentosDoRecorte, minhas.filter((t) => t.origem === "parcela" && !t.terceiro_id), mes, r.base, adiantadas);
 
   const contexto: Record<string, unknown> = {
     visao: visao === "casal" ? "casal (soma dos dois)" : "individual (somente a pessoa que pergunta)",
@@ -82,7 +89,7 @@ export function montarContexto(args: {
       return {
         mes: rotuloMes(m),
         total: r2(
-          minhas.filter((t) => t.origem === "parcela" && t.data.startsWith(m)).reduce((s, t) => s + t.valor, 0),
+          minhas.filter((t) => t.origem === "parcela" && !t.terceiro_id && t.data.startsWith(m)).reduce((s, t) => s + t.valor, 0),
         ),
       };
     }),
@@ -91,12 +98,27 @@ export function montarContexto(args: {
       return { mes: rotuloMes(m), entradas: r2(rm.entradas), saidas: r2(rm.saidas) };
     }),
     maiores_gastos_do_mes: doMes
-      .filter((t) => t.tipo === "saida")
+      .filter((t) => t.tipo === "saida" && !t.terceiro_id)
       .sort((a, b) => b.valor - a.valor)
       .slice(0, 6)
       .map((t) => ({ descricao: t.descricao.slice(0, 40), valor: r2(t.valor), categoria: ROTULO[t.categoria] })),
   };
 
+  const dividas = dividasDeTerceiros(
+    todas,
+    terceiros.filter((t) => visao === "casal" || t.autor_email === email),
+    repasses,
+    mes,
+  );
+  if (dividas.length > 0) {
+    contexto.cartao_emprestado = {
+      pessoas: dividas.length,
+      a_receber_no_mes: r2(dividas.reduce((acc, d) => acc + d.devidoMes, 0)),
+      em_aberto_total: r2(dividas.reduce((acc, d) => acc + d.emAberto, 0)),
+      observacao: "compras de terceiros no cartão não entram no orçamento",
+    };
+  }
+  contexto.assinaturas_no_mes = r2(doMes.filter((t) => t.origem === "assinatura" && !t.terceiro_id).reduce((acc, t) => acc + t.valor, 0));
   if (visao === "casal") {
     const outro = pessoas.find((p) => p.email !== email);
     const rotulo = (e: string) => (e === email ? "voce" : "par");

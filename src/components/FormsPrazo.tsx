@@ -21,8 +21,10 @@ import {
   type Parcelamento,
   type Parecer,
   type Pessoa,
+  type Terceiro,
   type Resumo,
 } from "@/lib/finance";
+import { CampoTerceiro } from "./CampoTerceiro";
 import { SeletorConta } from "./Contas";
 import { CampoValor } from "./CampoValor";
 import { campo, Modal, SugestaoCategoria } from "./Forms";
@@ -198,6 +200,20 @@ export type NovoParcelamento = {
   conta_id: string | null;
   data_compra: string;
   dia_vencimento: number | null;
+  /** Nome de quem vai pagar (cartão emprestado); vazio se a compra é sua. */
+  terceiro_nome: string | null;
+};
+
+export type NovaAssinatura = {
+  descricao: string;
+  valor_mensal: number;
+  categoria: Categoria;
+  escopo: Escopo;
+  conta_id: string | null;
+  terceiro_nome: string | null;
+  inicio: string;
+  dia_vencimento: number | null;
+  data_compra: string;
 };
 
 const dataBR = (d: string) => d.split("-").reverse().join("/");
@@ -205,32 +221,42 @@ const dataBR = (d: string) => d.split("-").reverse().join("/");
 export function FormParcelamento({
   mesInicial,
   escopoInicial,
+  modoInicial = "parcelado",
   contas,
+  terceiros,
   onSalvar,
+  onSalvarAssinatura,
   onFechar,
 }: {
   mesInicial: string;
   escopoInicial: Escopo;
+  modoInicial?: "parcelado" | "assinatura";
   contas: Conta[];
+  terceiros: Terceiro[];
   onSalvar: (p: NovoParcelamento) => Promise<string | null>;
+  onSalvarAssinatura: (a: NovaAssinatura) => Promise<string | null>;
   onFechar: () => void;
 }) {
+  const [modo, setModo] = useState<"parcelado" | "assinatura">(modoInicial);
   const [descricao, setDescricao] = useState("");
   const [valor, setValor] = useState("");
   const [parcelas, setParcelas] = useState("");
   const [dataCompra, setDataCompra] = useState(hoje);
   const [primeiraManual, setPrimeiraManual] = useState(mesInicial);
-  const [categoria, setCategoria] = useState<Categoria>("necessidade");
+  const [categoria, setCategoria] = useState<Categoria>(modoInicial === "assinatura" ? "lazer" : "necessidade");
   const [escopo, setEscopo] = useState<Escopo>(escopoInicial);
   const [contaId, setContaId] = useState<string | null>(contas.length === 1 ? contas[0].id : null);
+  const [terceiroNome, setTerceiroNome] = useState("");
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
 
+  const assinatura = modo === "assinatura";
+  const emprestada = terceiroNome.trim() !== "";
   const v = parseValor(valor);
   const n = Math.floor(Number(parcelas));
-  const previa = v > 0 && n >= 1 ? `${n}x de ${brl(v / n)}` : "";
+  const previa = !assinatura && v > 0 && n >= 1 ? `${n}x de ${brl(v / n)}` : "";
 
-  // Cartão com fechamento e vencimento: a fatura da primeira parcela sai da data da compra.
+  // Cartão com fechamento e vencimento: a fatura da primeira cobrança sai da data da compra.
   const conta = contas.find((c) => c.id === contaId);
   const fechamento = conta?.dia_fechamento ?? null;
   const vencimento = conta?.dia_vencimento ?? null;
@@ -239,76 +265,102 @@ export function FormParcelamento({
 
   async function salvar(ev: React.FormEvent) {
     ev.preventDefault();
-    if (!descricao.trim()) return setErro("Informe o que foi comprado.");
-    if (!(v > 0)) return setErro("Informe o valor total.");
-    if (!(n >= 1 && n <= 120)) return setErro("Informe de 1 a 120 parcelas (1 = no crédito, à vista).");
-    if (!dataCompra) return setErro("Informe a data da compra.");
-    if (!/^\d{4}-\d{2}$/.test(primeira)) return setErro("Escolha o mês da primeira parcela.");
+    if (!descricao.trim()) return setErro(assinatura ? "Informe o nome da assinatura." : "Informe o que foi comprado.");
+    if (!(v > 0)) return setErro(assinatura ? "Informe o valor mensal." : "Informe o valor total.");
+    if (!assinatura && !(n >= 1 && n <= 120)) return setErro("Informe de 1 a 120 parcelas (1 = no crédito, à vista).");
+    if (!dataCompra) return setErro("Informe a data.");
+    if (!/^\d{4}-\d{2}$/.test(primeira)) return setErro("Escolha o mês da primeira cobrança.");
     setSalvando(true);
-    const falha = await onSalvar({
+    const escopoFinal: Escopo = emprestada ? "pessoal" : escopo;
+    const comum = {
       descricao: descricao.trim(),
-      valor_total: v,
-      parcelas: n,
-      primeira,
       categoria,
-      escopo,
+      escopo: escopoFinal,
       conta_id: contaId,
       data_compra: dataCompra,
       dia_vencimento: fatura ? vencimento : null,
-    });
+      terceiro_nome: terceiroNome.trim() || null,
+    };
+    const falha = assinatura
+      ? await onSalvarAssinatura({ ...comum, valor_mensal: v, inicio: primeira })
+      : await onSalvar({ ...comum, valor_total: v, parcelas: n, primeira });
     setSalvando(false);
     if (falha) setErro(falha);
     else onFechar();
   }
 
+  const aba = (ativo: boolean) =>
+    `flex-1 rounded-lg border px-3 py-2 text-sm ${ativo ? "border-strong bg-strong text-background" : "border-line"}`;
+
   return (
-    <Modal titulo="Nova compra a prazo" onFechar={onFechar}>
+    <Modal titulo={assinatura ? "Nova assinatura" : "Nova compra a prazo"} onFechar={onFechar}>
       <form onSubmit={salvar} className="space-y-3">
+        <div className="flex gap-2" role="radiogroup" aria-label="Tipo de cobrança">
+          <button type="button" role="radio" aria-checked={!assinatura} onClick={() => setModo("parcelado")} className={aba(!assinatura)}>
+            Parcelado ou 1x no crédito
+          </button>
+          <button type="button" role="radio" aria-checked={assinatura} onClick={() => setModo("assinatura")} className={aba(assinatura)}>
+            🔄 Assinatura (mensal)
+          </button>
+        </div>
         <p className="text-xs text-subtle">
-          Informe o valor total e o número de parcelas (use 1 para uma compra no crédito sem parcelar). O sistema lança uma parcela por mês e soma tudo que vence em cada mês.
+          {assinatura
+            ? "Assinatura é cobrada todo mês, sem número de parcelas, até você cancelar. Informe o valor de cada mês."
+            : "Informe o valor total e o número de parcelas (use 1 para uma compra no crédito sem parcelar). O sistema lança uma parcela por mês e soma tudo que vence em cada mês."}
         </p>
-        <input className={campo} placeholder="O que foi comprado? (ex: Geladeira)" value={descricao} onChange={(e) => setDescricao(e.target.value)} />
-        <CampoValor rotulo="Valor total" valor={valor} onChange={setValor} />
-        <input className={campo} type="number" min={1} max={120} placeholder="Número de parcelas (1 = no crédito, à vista)" value={parcelas} onChange={(e) => setParcelas(e.target.value)} aria-label="Número de parcelas" />
-        {previa && <p className="text-sm font-medium">{previa}</p>}
-        <select className={campo} value={escopo} onChange={(e) => setEscopo(e.target.value as Escopo)} aria-label="De quem">
-          <option value="pessoal">Compra pessoal</option>
-          <option value="casal">Compra do casal (dividida)</option>
-        </select>
+        <input className={campo} placeholder={assinatura ? "Qual assinatura? (ex: Netflix)" : "O que foi comprado? (ex: Geladeira)"} value={descricao} onChange={(e) => setDescricao(e.target.value)} />
+        <CampoValor rotulo={assinatura ? "Valor mensal" : "Valor total"} valor={valor} onChange={setValor} />
+        {!assinatura && (
+          <>
+            <input className={campo} type="number" min={1} max={120} placeholder="Número de parcelas (1 = no crédito, à vista)" value={parcelas} onChange={(e) => setParcelas(e.target.value)} aria-label="Número de parcelas" />
+            {previa && <p className="text-sm font-medium">{previa}</p>}
+          </>
+        )}
+        {!emprestada && (
+          <select className={campo} value={escopo} onChange={(e) => setEscopo(e.target.value as Escopo)} aria-label="De quem">
+            <option value="pessoal">{assinatura ? "Assinatura pessoal" : "Compra pessoal"}</option>
+            <option value="casal">{assinatura ? "Assinatura do casal (dividida)" : "Compra do casal (dividida)"}</option>
+          </select>
+        )}
         <SeletorConta contas={contas} valor={contaId} onChange={setContaId} />
         <label className="block text-sm text-subtle">
-          Data da compra
+          {assinatura ? "Data da primeira cobrança" : "Data da compra"}
           <input className={`${campo} mt-1`} type="date" value={dataCompra} onChange={(e) => setDataCompra(e.target.value)} />
         </label>
         {fatura ? (
           <p className="animar-entrada rounded-lg bg-primary/10 p-3 text-xs">
-            💳 <strong>{conta?.nome}</strong> fecha dia {fechamento} e vence dia {vencimento}. Esta compra cai na fatura que vence em{" "}
-            <strong>{dataBR(fatura.vencimento)}</strong> ({rotuloMes(fatura.mes)}); as demais parcelas vencem todo dia {vencimento}.
-            {escopo === "casal" && " Mesmo sendo do casal, vale o fechamento e o vencimento do seu cartão: o acerto entre vocês continua automático."}
+            💳 <strong>{conta?.nome}</strong> fecha dia {fechamento} e vence dia {vencimento}. {assinatura ? "A primeira cobrança" : "Esta compra"} cai na fatura que vence em{" "}
+            <strong>{dataBR(fatura.vencimento)}</strong> ({rotuloMes(fatura.mes)}); {assinatura ? "as seguintes" : "as demais parcelas"} vencem todo dia {vencimento}.
+            {escopo === "casal" && !emprestada && " Mesmo sendo do casal, vale o fechamento e o vencimento do seu cartão: o acerto entre vocês continua automático."}
           </p>
         ) : (
           <label className="block text-sm text-subtle">
-            Mês da primeira parcela
+            {assinatura ? "Mês da primeira cobrança" : "Mês da primeira parcela"}
             <input className={`${campo} mt-1`} type="month" value={primeiraManual} onChange={(e) => setPrimeiraManual(e.target.value)} />
             <span className="mt-1 block text-xs">
               {conta ? "Este banco ainda não tem fechamento e vencimento: defina em Meus bancos (💳) para calcular a fatura sozinho." : "Escolha um cartão acima para calcular a fatura pelo fechamento e vencimento."}
             </span>
           </label>
         )}
-        <SugestaoCategoria descricao={descricao} categoria={categoria} onEscolher={setCategoria} />
-        <select className={campo} value={categoria} onChange={(e) => setCategoria(e.target.value as Categoria)} aria-label="Categoria">
-          {CATEGORIAS.map((c) => (
-            <option key={c} value={c}>
-              {ROTULO[c]}
-            </option>
-          ))}
-        </select>
-        <p className="text-xs text-subtle">
-          As parcelas entram como gasto em cada mês em que vencem, na categoria escolhida, e já contam nos limites 50/30/20.
-        </p>
+        <CampoTerceiro terceiros={terceiros} valor={terceiroNome} onChange={setTerceiroNome} />
+        {!emprestada && (
+          <>
+            <SugestaoCategoria descricao={descricao} categoria={categoria} onEscolher={setCategoria} />
+            <select className={campo} value={categoria} onChange={(e) => setCategoria(e.target.value as Categoria)} aria-label="Categoria">
+              {CATEGORIAS.map((c) => (
+                <option key={c} value={c}>
+                  {ROTULO[c]}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-subtle">
+              {assinatura ? "A assinatura entra como gasto em cada mês" : "As parcelas entram como gasto em cada mês em que vencem"}, na categoria escolhida, e já contam nos limites 50/30/20.
+            </p>
+          </>
+        )}
         {erro && <p className="text-sm text-danger">{erro}</p>}
         <button type="submit" disabled={salvando} className={botaoPrimario}>
-          {salvando ? "Salvando..." : "Salvar compra"}
+          {salvando ? "Salvando..." : assinatura ? "Salvar assinatura" : "Salvar compra"}
         </button>
       </form>
     </Modal>
