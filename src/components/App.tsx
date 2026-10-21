@@ -26,7 +26,7 @@ import {
 import { configurado, supabase } from "@/lib/supabase";
 import { alertasDeCartoes } from "@/lib/alertas";
 import { Tutorial } from "./Ajuda";
-import { ModalTelegram, PainelAlertas } from "./Alertas";
+import { PainelAlertas } from "./Alertas";
 import Consultor from "./Consultor";
 import { FormLancamento, type NovaTransacao } from "./Forms";
 import {
@@ -186,7 +186,7 @@ export default function App() {
   const [erro, setErro] = useState("");
   const [visao, setVisao] = useState<Visao>("meu");
   const [mesSel, setMesSel] = useState<string | null>(null);
-  const [modal, setModal] = useState<"lancar" | "comprar" | "ajuda" | "renda" | "parcelamento" | "assinatura" | "editarCompra" | "repasse" | "adiantar" | "telegram" | null>(null);
+  const [modal, setModal] = useState<"lancar" | "comprar" | "ajuda" | "renda" | "parcelamento" | "assinatura" | "editarCompra" | "repasse" | "adiantar" | null>(null);
   const [menu, setMenu] = useState(false);
 
   useEffect(() => {
@@ -655,7 +655,6 @@ export default function App() {
           alertas={alertas}
           temCartao={contas.some((c) => c.dia_fechamento && c.dia_vencimento)}
           nomeDe={nomeDe}
-          onTelegram={() => setModal("telegram")}
         />
 
         {erro && <p className="rounded-lg bg-danger/15 px-4 py-3 text-sm text-danger">{erro}</p>}
@@ -682,7 +681,6 @@ export default function App() {
         consultarIA={consultarIA}
       />
       {modal === "ajuda" && <Tutorial onFechar={() => setModal(null)} />}
-      {modal === "telegram" && <ModalTelegram token={sessao.access_token} onFechar={() => setModal(null)} />}
       {modal === "lancar" && (
         <FormLancamento
           escopoInicial={visao === "casal" ? "casal" : "pessoal"}

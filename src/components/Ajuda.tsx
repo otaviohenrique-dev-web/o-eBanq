@@ -122,7 +122,7 @@ const secoes = [
   {
     titulo: "Alertas de fechamento e vencimento",
     texto:
-      "No topo do painel, \"Datas dos cartões\" mostra o próximo fechamento e o próximo vencimento de cada cartão, com o valor da fatura. As datas ficam vermelhas quando faltam até 3 dias e amarelas até 7. Para receber também no Telegram, toque em 🔔 Avisos no Telegram, abra o bot e toque em Iniciar. Os avisos chegam por volta das 8h: vencimento 7, 3 e 1 dia antes (e no dia) e fechamento 3 e 1 dia antes (e no dia). Só cartões com fechamento e vencimento definidos (💳 em Meus bancos) entram.",
+      "No topo do painel, \"Datas dos cartões\" mostra o próximo fechamento e o próximo vencimento de cada cartão, com o valor da fatura. As datas ficam vermelhas quando faltam até 3 dias, amarelas até 7 e aparecem como \"HOJE\" no próprio dia. Só entram cartões com fechamento e vencimento definidos (toque em 💳 em Meus bancos).",
   },
   {
     titulo: "Meses",

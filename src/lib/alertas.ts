@@ -1,9 +1,9 @@
-import { addMeses, brl, faturaDaCompra, proximoVencimento, type Conta, type Transacao } from "./finance";
+import { faturaDaCompra, proximoVencimento, type Conta, type Transacao } from "./finance";
 
 export type Urgencia = "hoje" | "urgente" | "atencao" | "calmo";
 
 export type Alerta = {
-  /** Identifica o aviso (para não enviar o mesmo duas vezes): tipo, cartão, data e antecedência. */
+  /** Identifica o aviso: tipo, cartão, data e antecedência. */
   chave: string;
   tipo: "fechamento" | "vencimento";
   contaId: string;
@@ -22,10 +22,6 @@ export type Alerta = {
   vencimentoSeguinte: string | null;
 };
 
-/** Dias de antecedência em que o Telegram avisa. */
-export const AVISAR_VENCIMENTO = [7, 3, 1, 0];
-export const AVISAR_FECHAMENTO = [3, 1, 0];
-
 /** Dias de `de` até `ate` (datas YYYY-MM-DD; positivo se `ate` é depois). */
 export function diasEntre(de: string, ate: string): number {
   const [a, b, c] = de.split("-").map(Number);
@@ -35,7 +31,6 @@ export function diasEntre(de: string, ate: string): number {
 
 export const urgenciaDe = (dias: number): Urgencia => (dias <= 0 ? "hoje" : dias <= 3 ? "urgente" : dias <= 7 ? "atencao" : "calmo");
 
-const dataBR = (d: string) => d.split("-").reverse().join("/");
 /** Só dia e mês: nos avisos de poucos dias o ano é óbvio. */
 const diaMes = (d: string) => d.slice(5).split("-").reverse().join("/");
 
@@ -87,32 +82,8 @@ export function alertasDeCartoes(contas: Conta[], todas: Transacao[], hojeStr: s
   return lista.sort((a, b) => a.dias - b.dias || a.tipo.localeCompare(b.tipo));
 }
 
-/** Avisos que o Telegram deve mandar hoje (nas antecedências combinadas). */
-export const alertasParaEnviar = (alertas: Alerta[]) =>
-  alertas.filter((a) => (a.tipo === "vencimento" ? AVISAR_VENCIMENTO : AVISAR_FECHAMENTO).includes(a.dias));
-
 export function quando(a: Pick<Alerta, "dias" | "data">): string {
   if (a.dias <= 0) return "HOJE";
   if (a.dias === 1) return `amanhã (${diaMes(a.data)})`;
   return `em ${a.dias} dias (${diaMes(a.data)})`;
 }
-
-/** Texto do aviso (sem formatação). */
-export function textoAlerta(a: Alerta, dono: string): string {
-  const cartao = `${a.contaNome} (${dono})`;
-  if (a.tipo === "vencimento") {
-    const terceiros = a.valorTerceiros > 0 ? ` Inclui ${brl(a.valorTerceiros)} de outras pessoas.` : "";
-    return `⚠️ A fatura do ${cartao} vence ${quando(a)}: ${brl(a.valorFatura)}.${terceiros}`;
-  }
-  const seguinte = a.vencimentoSeguinte ? ` O que for comprado a partir dali só vence em ${dataBR(a.vencimentoSeguinte)}.` : "";
-  return `🔔 A fatura do ${cartao} fecha ${quando(a)}.${seguinte}`;
-}
-
-/** Data de hoje no fuso de São Paulo (o servidor roda em UTC). */
-export function hojeEmSaoPaulo(agora = new Date()): string {
-  return agora.toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
-}
-
-/** Mês seguinte ao de uma data, útil para limitar quanto da agenda de parcelas é gerada. */
-export const mesDaData = (d: string) => d.slice(0, 7);
-export const horizonte = (d: string, meses: number) => addMeses(mesDaData(d), meses);
