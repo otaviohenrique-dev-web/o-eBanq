@@ -112,7 +112,7 @@ const secoes = [
   {
     titulo: "Cartão emprestado",
     texto:
-      "Emprestou seu cartão? Ao cadastrar a compra ou a assinatura, escreva o nome de quem vai pagar em \"Quem vai pagar\". Essas compras não entram no seu orçamento nem na divisão do casal. Em Cartão emprestado você vê quanto a pessoa deve repassar no mês, o que já repassou e o total em aberto. Quando ela devolver o dinheiro, registre o repasse (e o banco que recebeu), e use Copiar resumo para mandar a conta para ela.",
+      "Emprestou seu cartão? Ao cadastrar a compra ou a assinatura, escreva o nome de quem vai pagar em \"Quem vai pagar\". Essas compras não entram no seu orçamento nem na divisão do casal. Em Cartão emprestado você vê quanto a pessoa deve repassar no mês, o que já repassou e o total em aberto. Quando ela devolver o dinheiro, registre o repasse (e o banco que recebeu), e use Copiar resumo para mandar a conta para ela. Cadastrou algo errado, como a data? Toque no ✏️ ao lado da compra, da assinatura ou do repasse para corrigir; o ✏️ ao lado do nome corrige o nome da pessoa.",
   },
   {
     titulo: "Assinaturas",

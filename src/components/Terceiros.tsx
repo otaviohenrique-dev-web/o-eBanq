@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { brl, hoje, parseValor, rotuloMes, type Conta, type DividaTerceiro, type Terceiro } from "@/lib/finance";
 import { Dica } from "./Ajuda";
-import { CampoValor } from "./CampoValor";
+import { CampoValor, mascararValor } from "./CampoValor";
 import { SeletorConta } from "./Contas";
 import { campo, Modal } from "./Forms";
 
@@ -27,12 +27,18 @@ export function CartaoEmprestadoPanel({
   podeEditar,
   onRepasse,
   onExcluirRepasse,
+  onEditarRepasse,
+  onEditarCompra,
+  onRenomear,
 }: {
   dividas: DividaTerceiro[];
   mes: string;
   podeEditar: boolean;
   onRepasse: (terceiroId: string) => void;
   onExcluirRepasse: (id: string) => void;
+  onEditarRepasse: (id: string) => void;
+  onEditarCompra: (id: string, tipo: "parcelado" | "assinatura") => void;
+  onRenomear: (id: string, nome: string) => void;
 }) {
   const [copiado, setCopiado] = useState<string | null>(null);
 
@@ -67,7 +73,23 @@ export function CartaoEmprestadoPanel({
         {dividas.map((d) => (
           <div key={d.terceiro.id} className="rounded-xl bg-muted p-4 text-sm">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="font-medium">🤝 {d.terceiro.nome}</p>
+              <p className="font-medium">
+                🤝 {d.terceiro.nome}
+                {podeEditar && (
+                  <button
+                    type="button"
+                    aria-label={`Renomear ${d.terceiro.nome}`}
+                    title="Corrigir o nome"
+                    onClick={() => {
+                      const novo = window.prompt("Corrigir o nome desta pessoa:", d.terceiro.nome)?.trim();
+                      if (novo && novo !== d.terceiro.nome) onRenomear(d.terceiro.id, novo);
+                    }}
+                    className="ml-1 rounded-full px-1.5 text-xs text-subtle"
+                  >
+                    ✏️
+                  </button>
+                )}
+              </p>
               <p className={`text-lg font-semibold ${d.emAberto > 0.005 ? "text-warning" : "text-primary"}`}>
                 {d.emAberto > 0.005 ? `Em aberto ${brl(d.emAberto)}` : "Em dia"}
               </p>
@@ -82,8 +104,19 @@ export function CartaoEmprestadoPanel({
                 {d.itens.map((i) => (
                   <li key={i.id} className="flex flex-wrap justify-between gap-x-3">
                     <span className="min-w-0 break-words">{i.descricao}</span>
-                    <span className="text-subtle">
+                    <span className="flex items-center gap-1 text-subtle">
                       {brl(i.valor)} · vence {dataBR(i.data)}
+                      {podeEditar && i.refId && (i.origem === "parcela" || i.origem === "assinatura") && (
+                        <button
+                          type="button"
+                          aria-label={`Editar ${i.descricao}`}
+                          title="Editar esta compra (data, valor, parcelas...)"
+                          onClick={() => onEditarCompra(i.refId!, i.origem === "assinatura" ? "assinatura" : "parcelado")}
+                          className="rounded-full px-1.5"
+                        >
+                          ✏️
+                        </button>
+                      )}
                     </span>
                   </li>
                 ))}
@@ -97,6 +130,11 @@ export function CartaoEmprestadoPanel({
                     <span>↩️ Repasse em {dataBR(r.data)}</span>
                     <span className="flex items-center gap-2">
                       <span className="text-primary">{brl(r.valor)}</span>
+                      {podeEditar && (
+                        <button type="button" aria-label="Editar repasse" title="Editar repasse" onClick={() => onEditarRepasse(r.id)} className="rounded-full px-1.5">
+                          ✏️
+                        </button>
+                      )}
                       {podeEditar && (
                         <button type="button" aria-label="Excluir repasse" onClick={() => onExcluirRepasse(r.id)} className="rounded-full px-1.5 text-subtle hover:text-danger">
                           ✕
@@ -130,18 +168,21 @@ export function FormRepasse({
   terceiro,
   emAberto,
   contas,
+  inicial,
   onSalvar,
   onFechar,
 }: {
   terceiro: Terceiro;
   emAberto: number;
   contas: Conta[];
+  /** Preenchido ao editar um repasse já registrado. */
+  inicial?: { valor: number; data: string; contaId: string | null };
   onSalvar: (valor: number, data: string, contaId: string | null) => Promise<string | null>;
   onFechar: () => void;
 }) {
-  const [valor, setValor] = useState("");
-  const [data, setData] = useState(hoje);
-  const [contaId, setContaId] = useState<string | null>(null);
+  const [valor, setValor] = useState(inicial ? mascararValor(String(Math.round(inicial.valor * 100))) : "");
+  const [data, setData] = useState(inicial?.data ?? hoje());
+  const [contaId, setContaId] = useState<string | null>(inicial?.contaId ?? null);
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
 
@@ -158,12 +199,12 @@ export function FormRepasse({
   }
 
   return (
-    <Modal titulo={`Repasse de ${terceiro.nome}`} onFechar={onFechar}>
+    <Modal titulo={`${inicial ? "Editar repasse" : "Repasse"} de ${terceiro.nome}`} onFechar={onFechar}>
       <form onSubmit={salvar} className="space-y-3">
         <p className="text-xs text-subtle">
           Registre o dinheiro que {terceiro.nome} devolveu. O valor em aberto diminui e, se você escolher o banco, o saldo dele aumenta. Não conta como renda.
         </p>
-        {emAberto > 0.005 && (
+        {!inicial && emAberto > 0.005 && (
           <button type="button" onClick={() => setValor(emAberto.toFixed(2).replace(".", ",").replace(/\B(?=(\d{3})+(?!\d))/g, "."))} className="rounded-full border border-line px-3 py-1.5 text-xs text-subtle">
             Preencher com o valor em aberto ({brl(emAberto)})
           </button>
@@ -176,7 +217,7 @@ export function FormRepasse({
         <SeletorConta contas={contas} valor={contaId} onChange={setContaId} />
         {erro && <p className="text-sm text-danger">{erro}</p>}
         <button type="submit" disabled={salvando} className="w-full rounded-full bg-primary px-6 py-3 font-medium text-on-primary">
-          {salvando ? "Salvando..." : "Registrar repasse"}
+          {salvando ? "Salvando..." : inicial ? "Salvar alterações" : "Registrar repasse"}
         </button>
       </form>
     </Modal>

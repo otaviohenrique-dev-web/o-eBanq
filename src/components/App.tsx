@@ -32,6 +32,7 @@ import {
   FormCompra,
   FormParcelamento,
   FormRendaFixa,
+  type InicialCompra,
   type LinhaAdiantamento,
   type NovaAssinatura,
   type NovaRenda,
@@ -176,12 +177,14 @@ export default function App() {
   const [repasses, setRepasses] = useState<Repasse[]>([]);
   const [assinaturas, setAssinaturas] = useState<Assinatura[]>([]);
   const [terceiroRepasse, setTerceiroRepasse] = useState<string | null>(null);
+  const [repasseEdit, setRepasseEdit] = useState<string | null>(null);
+  const [edicao, setEdicao] = useState<{ tipo: "parcelado" | "assinatura"; id: string } | null>(null);
   const [alvoAdiantar, setAlvoAdiantar] = useState<string | null>(null);
   const [carregado, setCarregado] = useState(false);
   const [erro, setErro] = useState("");
   const [visao, setVisao] = useState<Visao>("meu");
   const [mesSel, setMesSel] = useState<string | null>(null);
-  const [modal, setModal] = useState<"lancar" | "comprar" | "ajuda" | "renda" | "parcelamento" | "assinatura" | "repasse" | "adiantar" | null>(null);
+  const [modal, setModal] = useState<"lancar" | "comprar" | "ajuda" | "renda" | "parcelamento" | "assinatura" | "editarCompra" | "repasse" | "adiantar" | null>(null);
   const [menu, setMenu] = useState(false);
 
   useEffect(() => {
@@ -274,6 +277,27 @@ export default function App() {
 
   const salvarRepasse = (terceiroId: string, valor: number, data: string, contaId: string | null) =>
     gravar(supabase.from("repasses").insert({ terceiro_id: terceiroId, valor, data, conta_id: contaId, autor_email: email }));
+
+  // Edição do que a própria pessoa cadastrou (o banco só permite alterar registros do próprio autor).
+  async function atualizarParcelamento(id: string, p: NovoParcelamento) {
+    if (adiantadas.some((a) => a.parcelamento_id === id && a.indice >= p.parcelas)) {
+      return "Há pagamentos registrados nas últimas parcelas. Desfaça-os antes de reduzir o número de parcelas.";
+    }
+    const { terceiro_nome, ...resto } = p;
+    const t = await resolverTerceiro(terceiro_nome);
+    if (t.erro) return t.erro;
+    return gravar(supabase.from("parcelamentos").update({ ...resto, escopo: t.id ? "pessoal" : resto.escopo, terceiro_id: t.id }).eq("id", id));
+  }
+
+  async function atualizarAssinatura(id: string, a: NovaAssinatura) {
+    const { terceiro_nome, ...resto } = a;
+    const t = await resolverTerceiro(terceiro_nome);
+    if (t.erro) return t.erro;
+    return gravar(supabase.from("assinaturas").update({ ...resto, escopo: t.id ? "pessoal" : resto.escopo, terceiro_id: t.id }).eq("id", id));
+  }
+
+  const atualizarRepasse = (id: string, valor: number, data: string, contaId: string | null) =>
+    gravar(supabase.from("repasses").update({ valor, data, conta_id: contaId }).eq("id", id));
 
   function cancelarAssinatura(id: string) {
     const a = assinaturas.find((x) => x.id === id);
@@ -450,6 +474,42 @@ export default function App() {
   const minhasContas = contas.filter((c) => c.autor_email === email);
   const meusTerceiros = terceiros.filter((t) => t.autor_email === email);
 
+  function inicialDaEdicao(): InicialCompra | null {
+    if (!edicao) return null;
+    const nomeTerceiro = (tid?: string | null) => terceiros.find((t) => t.id === tid)?.nome ?? "";
+    if (edicao.tipo === "assinatura") {
+      const a = assinaturas.find((x) => x.id === edicao.id);
+      if (!a || a.autor_email !== email) return null;
+      return {
+        tipo: "assinatura",
+        descricao: a.descricao,
+        valor: a.valor_mensal,
+        parcelas: 1,
+        dataCompra: a.data_compra ?? null,
+        primeira: a.inicio,
+        categoria: a.categoria,
+        escopo: a.escopo,
+        contaId: a.conta_id ?? null,
+        terceiroNome: nomeTerceiro(a.terceiro_id),
+      };
+    }
+    const p = parcelamentos.find((x) => x.id === edicao.id);
+    if (!p || p.autor_email !== email) return null;
+    return {
+      tipo: "parcelado",
+      descricao: p.descricao,
+      valor: p.valor_total,
+      parcelas: p.parcelas,
+      dataCompra: p.data_compra ?? null,
+      primeira: p.primeira,
+      categoria: p.categoria,
+      escopo: p.escopo,
+      contaId: p.conta_id ?? null,
+      terceiroNome: nomeTerceiro(p.terceiro_id),
+    };
+  }
+  const inicialEdicao = modal === "editarCompra" ? inicialDaEdicao() : null;
+
   const g: Gestao = {
     hoje: hoje(),
     terceiros,
@@ -460,8 +520,21 @@ export default function App() {
     onExcluirAssinatura: (id) => aoFalhar(supabase.from("assinaturas").delete().eq("id", id)),
     onNovoRepasse: (id) => {
       setTerceiroRepasse(id);
+      setRepasseEdit(null);
       setModal("repasse");
     },
+    onEditarRepasse: (id) => {
+      const r = repasses.find((x) => x.id === id);
+      if (!r) return;
+      setTerceiroRepasse(r.terceiro_id);
+      setRepasseEdit(id);
+      setModal("repasse");
+    },
+    onEditarCompra: (id, tipo) => {
+      setEdicao({ tipo, id });
+      setModal("editarCompra");
+    },
+    onRenomearTerceiro: (id, nome) => aoFalhar(supabase.from("terceiros").update({ nome }).eq("id", id)),
     onExcluirRepasse: (id) => aoFalhar(supabase.from("repasses").delete().eq("id", id)),
     adiantadas,
     onAdiantarFatura: () => {
@@ -645,12 +718,31 @@ export default function App() {
           onFechar={() => setModal(null)}
         />
       )}
+      {modal === "editarCompra" && edicao && inicialEdicao && (
+        <FormParcelamento
+          key={edicao.id}
+          inicial={inicialEdicao}
+          mesInicial={mes}
+          escopoInicial={inicialEdicao.escopo}
+          contas={minhasContas}
+          terceiros={meusTerceiros}
+          onSalvar={(p) => atualizarParcelamento(edicao.id, p)}
+          onSalvarAssinatura={(a) => atualizarAssinatura(edicao.id, a)}
+          onFechar={() => setModal(null)}
+        />
+      )}
       {modal === "repasse" && terceiroRepasse && meusTerceiros.some((t) => t.id === terceiroRepasse) && (
         <FormRepasse
           terceiro={meusTerceiros.find((t) => t.id === terceiroRepasse)!}
           emAberto={dividasDeTerceiros(todas, meusTerceiros, repasses, mes).find((d) => d.terceiro.id === terceiroRepasse)?.emAberto ?? 0}
           contas={minhasContas}
-          onSalvar={(valor, data, contaId) => salvarRepasse(terceiroRepasse, valor, data, contaId)}
+          inicial={(() => {
+            const r = repasseEdit ? repasses.find((x) => x.id === repasseEdit) : undefined;
+            return r ? { valor: r.valor, data: r.data, contaId: r.conta_id ?? null } : undefined;
+          })()}
+          onSalvar={(valor, data, contaId) =>
+            repasseEdit ? atualizarRepasse(repasseEdit, valor, data, contaId) : salvarRepasse(terceiroRepasse, valor, data, contaId)
+          }
           onFechar={() => setModal(null)}
         />
       )}

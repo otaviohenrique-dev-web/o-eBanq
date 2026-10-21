@@ -51,6 +51,9 @@ export type Gestao = {
   onExcluirAssinatura: (id: string) => void;
   onNovoRepasse: (terceiroId: string) => void;
   onExcluirRepasse: (id: string) => void;
+  onEditarRepasse: (id: string) => void;
+  onEditarCompra: (id: string, tipo: "parcelado" | "assinatura") => void;
+  onRenomearTerceiro: (id: string, nome: string) => void;
   adiantadas: Adiantada[];
   onAdiantarFatura: () => void;
   onAdiantarCompra: (parcelamentoId: string) => void;
@@ -437,9 +440,14 @@ function ParcelasPanel({
                   )}
                 </div>
                 {!somenteLeitura && p.autor_email === meuEmail && (
-                  <button type="button" aria-label={`Excluir ${p.descricao}`} onClick={() => g.onExcluirParcelamento(p.id)} className="rounded-full px-2 text-subtle hover:text-danger">
-                    ✕
-                  </button>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <button type="button" aria-label={`Editar ${p.descricao}`} title="Editar (data, valor, parcelas, cartão...)" onClick={() => g.onEditarCompra(p.id, "parcelado")} className="rounded-full px-1.5">
+                      ✏️
+                    </button>
+                    <button type="button" aria-label={`Excluir ${p.descricao}`} onClick={() => g.onExcluirParcelamento(p.id)} className="rounded-full px-2 text-subtle hover:text-danger">
+                      ✕
+                    </button>
+                  </div>
                 )}
               </div>
               <div className="mt-2 h-1.5 rounded-full bg-muted">
@@ -656,9 +664,19 @@ export function PainelPessoal({
         onNova={g.onNovaAssinatura}
         onCancelar={g.onCancelarAssinatura}
         onExcluir={g.onExcluirAssinatura}
+        onEditar={(id) => g.onEditarCompra(id, "assinatura")}
       />
       {!somenteLeitura && (
-        <CartaoEmprestadoPanel dividas={dividas} mes={mes} podeEditar onRepasse={g.onNovoRepasse} onExcluirRepasse={g.onExcluirRepasse} />
+        <CartaoEmprestadoPanel
+          dividas={dividas}
+          mes={mes}
+          podeEditar
+          onRepasse={g.onNovoRepasse}
+          onExcluirRepasse={g.onExcluirRepasse}
+          onEditarRepasse={g.onEditarRepasse}
+          onEditarCompra={g.onEditarCompra}
+          onRenomear={g.onRenomearTerceiro}
+        />
       )}
       <Movimentos
         titulo={somenteLeitura ? `Lançamentos pessoais de ${pessoa.nome} no mês` : "Seus lançamentos pessoais do mês"}
@@ -817,6 +835,7 @@ export function PainelCasal({
         onNova={g.onNovaAssinatura}
         onCancelar={g.onCancelarAssinatura}
         onExcluir={g.onExcluirAssinatura}
+        onEditar={(id) => g.onEditarCompra(id, "assinatura")}
       />
       <Movimentos
         titulo="Movimentações do casal no mês"

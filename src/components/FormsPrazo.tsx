@@ -26,7 +26,7 @@ import {
 } from "@/lib/finance";
 import { CampoTerceiro } from "./CampoTerceiro";
 import { SeletorConta } from "./Contas";
-import { CampoValor } from "./CampoValor";
+import { CampoValor, mascararValor } from "./CampoValor";
 import { campo, Modal, SugestaoCategoria } from "./Forms";
 
 const botaoPrimario = "w-full rounded-full bg-primary px-6 py-3 font-medium text-on-primary";
@@ -218,10 +218,27 @@ export type NovaAssinatura = {
 
 const dataBR = (d: string) => d.split("-").reverse().join("/");
 
+/** Dados de uma compra ou assinatura já cadastrada, para editar. */
+export type InicialCompra = {
+  tipo: "parcelado" | "assinatura";
+  descricao: string;
+  valor: number;
+  parcelas: number;
+  dataCompra: string | null;
+  primeira: string;
+  categoria: Categoria;
+  escopo: Escopo;
+  contaId: string | null;
+  terceiroNome: string;
+};
+
+const centavos = (n: number) => mascararValor(String(Math.round(n * 100)));
+
 export function FormParcelamento({
   mesInicial,
   escopoInicial,
   modoInicial = "parcelado",
+  inicial,
   contas,
   terceiros,
   onSalvar,
@@ -231,22 +248,25 @@ export function FormParcelamento({
   mesInicial: string;
   escopoInicial: Escopo;
   modoInicial?: "parcelado" | "assinatura";
+  /** Preenchido ao editar uma compra ou assinatura existente. */
+  inicial?: InicialCompra;
   contas: Conta[];
   terceiros: Terceiro[];
   onSalvar: (p: NovoParcelamento) => Promise<string | null>;
   onSalvarAssinatura: (a: NovaAssinatura) => Promise<string | null>;
   onFechar: () => void;
 }) {
-  const [modo, setModo] = useState<"parcelado" | "assinatura">(modoInicial);
-  const [descricao, setDescricao] = useState("");
-  const [valor, setValor] = useState("");
-  const [parcelas, setParcelas] = useState("");
-  const [dataCompra, setDataCompra] = useState(hoje);
-  const [primeiraManual, setPrimeiraManual] = useState(mesInicial);
-  const [categoria, setCategoria] = useState<Categoria>(modoInicial === "assinatura" ? "lazer" : "necessidade");
-  const [escopo, setEscopo] = useState<Escopo>(escopoInicial);
-  const [contaId, setContaId] = useState<string | null>(contas.length === 1 ? contas[0].id : null);
-  const [terceiroNome, setTerceiroNome] = useState("");
+  const editando = Boolean(inicial);
+  const [modo, setModo] = useState<"parcelado" | "assinatura">(inicial?.tipo ?? modoInicial);
+  const [descricao, setDescricao] = useState(inicial?.descricao ?? "");
+  const [valor, setValor] = useState(inicial ? centavos(inicial.valor) : "");
+  const [parcelas, setParcelas] = useState(inicial && inicial.tipo === "parcelado" ? String(inicial.parcelas) : "");
+  const [dataCompra, setDataCompra] = useState(inicial ? (inicial.dataCompra ?? `${inicial.primeira}-01`) : hoje());
+  const [primeiraManual, setPrimeiraManual] = useState(inicial?.primeira ?? mesInicial);
+  const [categoria, setCategoria] = useState<Categoria>(inicial?.categoria ?? (modoInicial === "assinatura" ? "lazer" : "necessidade"));
+  const [escopo, setEscopo] = useState<Escopo>(inicial?.escopo ?? escopoInicial);
+  const [contaId, setContaId] = useState<string | null>(inicial ? inicial.contaId : contas.length === 1 ? contas[0].id : null);
+  const [terceiroNome, setTerceiroNome] = useState(inicial?.terceiroNome ?? "");
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
 
@@ -260,7 +280,9 @@ export function FormParcelamento({
   const conta = contas.find((c) => c.id === contaId);
   const fechamento = conta?.dia_fechamento ?? null;
   const vencimento = conta?.dia_vencimento ?? null;
-  const fatura = fechamento && vencimento && dataCompra ? faturaDaCompra(dataCompra, fechamento, vencimento) : null;
+  // Registros antigos, sem data da compra, mantêm o mês que já tinham.
+  const calculaFatura = !editando || Boolean(inicial?.dataCompra);
+  const fatura = calculaFatura && fechamento && vencimento && dataCompra ? faturaDaCompra(dataCompra, fechamento, vencimento) : null;
   const primeira = fatura ? fatura.mes : primeiraManual;
 
   async function salvar(ev: React.FormEvent) {
@@ -293,8 +315,9 @@ export function FormParcelamento({
     `flex-1 rounded-lg border px-3 py-2 text-sm ${ativo ? "border-strong bg-strong text-background" : "border-line"}`;
 
   return (
-    <Modal titulo={assinatura ? "Nova assinatura" : "Nova compra a prazo"} onFechar={onFechar}>
+    <Modal titulo={`${editando ? "Editar" : "Nova"} ${assinatura ? "assinatura" : "compra a prazo"}`} onFechar={onFechar}>
       <form onSubmit={salvar} className="space-y-3">
+        {!editando && (
         <div className="flex gap-2" role="radiogroup" aria-label="Tipo de cobrança">
           <button type="button" role="radio" aria-checked={!assinatura} onClick={() => setModo("parcelado")} className={aba(!assinatura)}>
             Parcelado ou 1x no crédito
@@ -303,6 +326,7 @@ export function FormParcelamento({
             🔄 Assinatura (mensal)
           </button>
         </div>
+        )}
         <p className="text-xs text-subtle">
           {assinatura
             ? "Assinatura é cobrada todo mês, sem número de parcelas, até você cancelar. Informe o valor de cada mês."
@@ -360,7 +384,7 @@ export function FormParcelamento({
         )}
         {erro && <p className="text-sm text-danger">{erro}</p>}
         <button type="submit" disabled={salvando} className={botaoPrimario}>
-          {salvando ? "Salvando..." : assinatura ? "Salvar assinatura" : "Salvar compra"}
+          {salvando ? "Salvando..." : editando ? "Salvar alterações" : assinatura ? "Salvar assinatura" : "Salvar compra"}
         </button>
       </form>
     </Modal>

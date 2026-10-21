@@ -16,6 +16,7 @@ export function AssinaturasPanel({
   onNova,
   onCancelar,
   onExcluir,
+  onEditar,
 }: {
   assinaturas: Assinatura[];
   mes: string;
@@ -27,6 +28,7 @@ export function AssinaturasPanel({
   onNova: () => void;
   onCancelar: (id: string) => void;
   onExcluir: (id: string) => void;
+  onEditar: (id: string) => void;
 }) {
   const ativa = (a: Assinatura) => a.inicio <= mes && (!a.fim || a.fim >= mes);
   const totalMes = assinaturas.filter((a) => ativa(a) && !a.terceiro_id).reduce((acc, a) => acc + a.valor_mensal, 0);
@@ -77,6 +79,9 @@ export function AssinaturasPanel({
               </div>
               {dono && (
                 <div className="flex shrink-0 items-center gap-2">
+                  <button type="button" aria-label={`Editar ${a.descricao}`} title="Editar (data, valor, cartão...)" onClick={() => onEditar(a.id)} className="rounded-full px-1.5">
+                    ✏️
+                  </button>
                   {!a.fim && (
                     <button type="button" onClick={() => onCancelar(a.id)} className="rounded-full border border-line px-3 py-1 text-xs text-subtle" title="Deixa de contar a partir do próximo mês">
                       Cancelar
