@@ -75,6 +75,11 @@ export function PrimeirosPassos({
 
 const secoes = [
   {
+    titulo: "Seções recolhidas",
+    texto:
+      "A tela inicial mostra só o essencial: faturas dos cartões, quanto você tem para gastar, os limites e as movimentações. Compras a prazo, assinaturas, salário, bancos e cartão emprestado ficam recolhidos: toque no título para abrir. O resumo ao lado do título já mostra o principal.",
+  },
+  {
     titulo: "As três visões",
     texto:
       "Meu painel mostra só o que você lançou como pessoal e é onde você cadastra. Par mostra o painel da outra pessoa, só para consulta. Casal junta os dois num dashboard com gráficos.",
@@ -120,9 +125,9 @@ const secoes = [
       "Em + Compra a prazo, escolha Assinatura (mensal) para cobranças sem número de parcelas, como streaming. Ela se repete todo mês até você cancelar, entra como gasto na categoria escolhida e soma na fatura do cartão. Cancelar faz ela deixar de contar a partir do próximo mês.",
   },
   {
-    titulo: "Alertas de fechamento e vencimento",
+    titulo: "Faturas dos cartões",
     texto:
-      "No topo do painel, \"Datas dos cartões\" mostra o próximo fechamento e o próximo vencimento de cada cartão, com o valor da fatura. As datas ficam vermelhas quando faltam até 3 dias, amarelas até 7 e aparecem como \"HOJE\" no próprio dia. Só entram cartões com fechamento e vencimento definidos (toque em 💳 em Meus bancos).",
+      "No topo do painel, cada cartão aparece num quadro com o valor da próxima fatura em destaque, quando ela vence e se já fechou (ou quando fecha). O quadro fica vermelho quando faltam até 3 dias, amarelo até 7 e mostra HOJE no próprio dia. Só entram cartões com fechamento e vencimento definidos (toque em 💳 em Meus bancos).",
   },
   {
     titulo: "Meses",

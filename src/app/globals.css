@@ -235,6 +235,29 @@ button:disabled {
   }
 }
 
+/* Botão de largura total que abre uma seção: não "levanta" ao passar o mouse, só muda o fundo. */
+.botao-plano:hover:not(:disabled),
+.botao-plano:active:not(:disabled) {
+  transform: none;
+  box-shadow: none;
+  filter: none;
+}
+.botao-plano:hover:not(:disabled) {
+  background: var(--muted);
+}
+
+/* Painéis dentro de uma <Secao> perdem o cartão e o título próprios: a seção já tem os dois. */
+.secao-corpo > section {
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+  border-radius: 0;
+}
+.secao-corpo > section > h2,
+.secao-corpo > section > div:first-child h2 {
+  display: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .consultor-fab::before,
   .faisca,
