@@ -26,7 +26,9 @@ import {
 import { configurado, supabase } from "@/lib/supabase";
 import { alertasDeCartoes } from "@/lib/alertas";
 import { Tutorial } from "./Ajuda";
+import { selecionarParaReset } from "@/lib/reset";
 import { PainelAlertas } from "./Alertas";
+import { ModalReset } from "./ModalReset";
 import Consultor from "./Consultor";
 import { FormLancamento, type NovaTransacao } from "./Forms";
 import {
@@ -186,7 +188,7 @@ export default function App() {
   const [erro, setErro] = useState("");
   const [visao, setVisao] = useState<Visao>("meu");
   const [mesSel, setMesSel] = useState<string | null>(null);
-  const [modal, setModal] = useState<"lancar" | "comprar" | "ajuda" | "renda" | "parcelamento" | "assinatura" | "editarCompra" | "repasse" | "adiantar" | null>(null);
+  const [modal, setModal] = useState<"lancar" | "comprar" | "ajuda" | "renda" | "parcelamento" | "assinatura" | "editarCompra" | "repasse" | "adiantar" | "reset" | null>(null);
   const [menu, setMenu] = useState(false);
 
   useEffect(() => {
@@ -300,6 +302,18 @@ export default function App() {
 
   const atualizarRepasse = (id: string, valor: number, data: string, contaId: string | null) =>
     gravar(supabase.from("repasses").update({ valor, data, conta_id: contaId }).eq("id", id));
+
+  // Apaga os dados de quem está logado pela função do banco (uma transação só, só os próprios registros).
+  async function resetarDados(tudo: boolean): Promise<string | null> {
+    const { error } = await supabase.rpc("resetar_meus_dados", { p_tudo: tudo });
+    if (error) {
+      return /resetar_meus_dados|schema cache/i.test(error.message)
+        ? "A função de reset ainda não existe no banco. Rode supabase/10-resetar-meus-dados.sql no Supabase."
+        : error.message;
+    }
+    await carregar();
+    return null;
+  }
 
   function cancelarAssinatura(id: string) {
     const a = assinaturas.find((x) => x.id === id);
@@ -611,6 +625,16 @@ export default function App() {
                   <button type="button" onClick={sair} className="mt-2 w-full rounded-lg border border-line px-3 py-2 text-sm">
                     Sair
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenu(false);
+                      setModal("reset");
+                    }}
+                    className="mt-4 w-full rounded-lg px-3 py-2 text-left text-xs text-danger"
+                  >
+                    Apagar meus dados…
+                  </button>
                 </div>
               )}
             </div>
@@ -681,6 +705,14 @@ export default function App() {
         consultarIA={consultarIA}
       />
       {modal === "ajuda" && <Tutorial onFechar={() => setModal(null)} />}
+      {modal === "reset" && (
+        <ModalReset
+          selecaoPessoal={selecionarParaReset(email, { transacoes, rendas, parcelamentos, assinaturas, contas, terceiros, repasses, adiantadas }, false)}
+          selecaoTudo={selecionarParaReset(email, { transacoes, rendas, parcelamentos, assinaturas, contas, terceiros, repasses, adiantadas }, true)}
+          onApagar={resetarDados}
+          onFechar={() => setModal(null)}
+        />
+      )}
       {modal === "lancar" && (
         <FormLancamento
           escopoInicial={visao === "casal" ? "casal" : "pessoal"}

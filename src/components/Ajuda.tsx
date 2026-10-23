@@ -130,6 +130,11 @@ const secoes = [
       "No topo do painel, cada cartão aparece num quadro com o valor da próxima fatura em destaque, quando ela vence e se já fechou (ou quando fecha). O quadro fica vermelho quando faltam até 3 dias, amarelo até 7 e mostra HOJE no próprio dia. Só entram cartões com fechamento e vencimento definidos (toque em 💳 em Meus bancos).",
   },
   {
+    titulo: "Apagar meus dados",
+    texto:
+      "No menu da sua foto, \"Apagar meus dados…\" limpa o que você cadastrou, sem mexer nos dados do seu par nem no seu login. Você escolhe entre só os dados pessoais (mantém bancos e o que é do casal) ou tudo que cadastrou. A tela mostra exatamente o que será apagado, oferece baixar uma cópia e só libera o botão depois de você digitar APAGAR e confirmar. Não dá para desfazer.",
+  },
+  {
     titulo: "Meses",
     texto: "As setas no topo trocam o mês exibido. Dá para olhar meses passados e ver quanto já está comprometido em meses futuros.",
   },
